@@ -46,6 +46,7 @@ BUILD_DIR = build
 # C sources
 C_SOURCES += Src/main.c
 C_SOURCES += Src/app.c
+C_SOURCES += Src/utils.c
 C_SOURCES += Src/draw.c
 C_SOURCES += Src/app_enc.c
 C_SOURCES += Src/app_fuseprogramming.c
@@ -107,7 +108,7 @@ C_DEFS += -DTX_MAX_PARALLEL_NETWORKS=1
 
 # C includes
 # Patched files
-C_INCLUDES += -IInc
+C_INCLUDES += -IInc -IModel
 
 
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections -fcyclomatic-complexity

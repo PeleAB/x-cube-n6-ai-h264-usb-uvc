@@ -179,7 +179,7 @@ void CAM_Init(void)
   cam_conf.pixel_format = 0; /* Default; Not implemented yet */
   cam_conf.anti_flicker = 0;
   cam_conf.mirror_flip = sensor_mirror_flip;
-  ret = CMW_CAMERA_Init(&cam_conf);
+  ret = CMW_CAMERA_Init(&cam_conf, NULL);
   assert(ret == CMW_ERROR_NONE);
   sensor_width = cam_conf.width;
   sensor_height = cam_conf.height;

@@ -24,7 +24,6 @@
 #include "app_config.h"
 #include "app_postprocess.h"
 #include "isp_api.h"
-#include "ll_aton_runtime.h"
 #include "cmw_camera.h"
 #include "stm32n6xx_hal.h"
 #include "stm32n6xx_ll_venc.h"
@@ -36,6 +35,7 @@
 #include "utils.h"
 #include "uvcl.h"
 #include "draw.h"
+#include "network.h"
 
 #include "figs.h"
 
@@ -65,7 +65,7 @@
 #define VENC_OUT_BUFFER_SIZE (255 * 1024)
 
 /* Model Related Info */
-#define NN_BUFFER_OUT_SIZE 5880
+#define NN_BUFFER_OUT_SIZE LL_ATON_DEFAULT_OUT_1_SIZE_BYTES
 
 /* Align so we are sure nn_output_buffers[0] and nn_output_buffers[1] are aligned on 32 bytes */
 #define NN_BUFFER_OUT_SIZE_ALIGN ALIGN_VALUE(NN_BUFFER_OUT_SIZE, 32)
@@ -376,6 +376,11 @@ static void nn_thread_fct(void *arg)
 
   (void) nn_period_ms;
 
+  /* Initialize Cube.AI/ATON ... */
+  LL_ATON_RT_RuntimeInit();
+  /* ... and model instance */
+  LL_ATON_RT_Init_Network(&NN_Instance_Default);
+
   /* setup inout buffers and size */
   nn_in_len = LL_Buffer_len(&nn_in_info[0]);
   nn_out_len = LL_Buffer_len(&nn_out_info[0]);
@@ -411,7 +416,7 @@ static void nn_thread_fct(void *arg)
     CACHE_OP(SCB_InvalidateDCache_by_Addr(output_buffer, nn_out_len));
     ret = LL_ATON_Set_User_Output_Buffer_Default(0, output_buffer, nn_out_len);
     assert(ret == LL_ATON_User_IO_NOERROR);
-    LL_ATON_RT_Main(&NN_Instance_Default);
+    Run_Inference(&NN_Instance_Default);
     time_stat_update(&stat_info.nn_inference_time, HAL_GetTick() - ts);
 
     /* release buffers */
@@ -647,15 +652,7 @@ static int display_new_frame(od_pp_out_t *pp_out)
 
 static void dp_thread_fct(void *arg)
 {
-#if POSTPROCESS_TYPE == POSTPROCESS_OD_YOLO_V2_UF
-  yolov2_pp_static_param_t pp_params;
-#elif POSTPROCESS_TYPE == POSTPROCESS_OD_YOLO_V5_UU
-  yolov5_pp_static_param_t pp_params;
-#elif POSTPROCESS_TYPE == POSTPROCESS_OD_YOLO_V8_UF || POSTPROCESS_TYPE == POSTPROCESS_OD_YOLO_V8_UI
-  yolov8_pp_static_param_t pp_params;
-#else
-    #error "PostProcessing type not supported"
-#endif
+  od_yolov2_pp_static_param_t pp_params;
   od_pp_out_t pp_output;
   uint32_t total_ts;
   void *pp_input;
@@ -664,7 +661,7 @@ static void dp_thread_fct(void *arg)
   int ret;
 
   /* setup post process */
-  app_postprocess_init(&pp_params);
+  app_postprocess_init(&pp_params, &NN_Instance_Default);
   while (1)
   {
     uint8_t *output_buffer;
@@ -704,7 +701,7 @@ static void isp_thread_fct(void *arg)
   }
 }
 
-static void app_uvc_streaming_active(struct uvcl_callbacks *cbs)
+static void app_uvc_streaming_active(struct uvcl_callbacks *cbs, UVCL_StreamConf_t stream)
 {
   uvc_is_active = 1;
   BSP_LED_On(LED_RED);
@@ -768,10 +765,11 @@ void app_run()
   ENC_Init(&enc_conf);
 
   /* Uvc init */
-  uvcl_conf.width = VENC_WIDTH;
-  uvcl_conf.height = VENC_HEIGHT;
-  uvcl_conf.fps = CAMERA_FPS;
-  uvcl_conf.payload_type = UVCL_PAYLOAD_FB_H264;
+  uvcl_conf.streams[0].width = VENC_WIDTH;
+  uvcl_conf.streams[0].height = VENC_HEIGHT;
+  uvcl_conf.streams[0].fps = CAMERA_FPS;
+  uvcl_conf.streams[0].payload_type = UVCL_PAYLOAD_FB_H264;
+  uvcl_conf.streams_nb = 1;
   uvcl_conf.is_immediate_mode = 1;
   uvcl_cbs.streaming_active = app_uvc_streaming_active;
   uvcl_cbs.streaming_inactive = app_uvc_streaming_inactive;
