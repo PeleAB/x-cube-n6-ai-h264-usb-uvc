@@ -156,6 +156,13 @@ More information about boot modes is available in the [Boot Overview](Doc/Boot-O
 
 Set your board to [development mode](#boot-modes).
 
+#### VSCode + STM32Cube Extension (CMake)
+
+1. Install STM32CubeCLT (for `cube-cmake` and the GNU toolchain) and the STM32Cube extension for VSCode.
+2. Configure the project with CMake presets: `cmake --preset Debug` (or use the **CMake Configure (Debug)** VSCode task).
+3. Build: `cmake --build --preset Debug` (or the **CMake Build (Debug)** VSCode task). Artifacts are written to `build/Debug/Project.elf|bin|hex`.
+4. Launch your preferred debug configuration from the STM32Cube extension (the `.ioc` file is available as `x-cube-n6-ai-h264-usb-uvc.ioc`).
+
 #### STM32CubeIDE
 
 Double-click on `STM32CubeIDE/.project` to open the project in STM32CubeIDE. Build and run using the build and run buttons.
