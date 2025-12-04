@@ -21,7 +21,7 @@
 
 #include <stdint.h>
 
-#include "app_enc.h"
+#include "fal/fal_encoder.h"
 #include "app_postprocess.h"
 #include "uvcl.h"
 

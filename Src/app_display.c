@@ -27,6 +27,7 @@
 #include "app_stats.h"
 #include "draw.h"
 #include "figs.h"
+#include "fal/fal_encoder.h"
 #include "stm32n6570_discovery.h"
 #include "stm32n6xx_hal.h"
 #include "utils.h"

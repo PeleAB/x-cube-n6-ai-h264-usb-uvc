@@ -1,6 +1,6 @@
- /**
+/**
  ******************************************************************************
- * @file    enc.c
+ * @file    fal_encoder.c
  * @author  GPM Application Team
  *
  ******************************************************************************
@@ -15,7 +15,7 @@
  *
  ******************************************************************************
  */
-#include "app_enc.h"
+#include "fal/fal_encoder.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -258,7 +258,7 @@ int ENC_EncodeFrame(uint8_t *p_in, uint8_t *p_out, size_t out_len, int is_intra_
 
   ret = VENC_Encode(p_in, p_out, out_len, &out_compressed_frame_len, is_intra_force);
 
-  return ret ? -1 : out_compressed_frame_len;
+  return ret ? -1 : (int) out_compressed_frame_len;
 }
 
 void *EWLmalloc(u32 n)

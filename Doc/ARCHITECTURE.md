@@ -19,7 +19,7 @@ Current-to-target mapping (proposed)
 - `Src/fal/fal_camera.c`: hardware config wrapper over HAL (formerly `Src/app_cam.c`), sensor profile handling will move to `svc/camera_service.c`.
 - `Src/app_pipeline.c`: move buffer queue to `svc/bqueue.c`, pipeline coordination/tasks to `app/pipeline_orchestrator.c`, and ISR callbacks to an event path that returns buffers via the service.
 - `Src/app_display.c`: split into `svc/overlay_renderer.c`, `svc/encoder_service.c`, `svc/uvc_sink.c`; DMA2D locking moves to `fal/dma2d_hal.c`.
-- `Src/app_enc.c`: becomes `fal/encoder_hal.c`; service wraps it with policy (GOP, bitrate) and keyframe control.
+- `Src/fal/fal_encoder.c`: HAL wrapper for encoder (was `Src/app_enc.c`); a service should wrap it with policy (GOP, bitrate) and keyframe control.
 - `Src/app_stats.c`: `svc/stats_service.c` with optional sinks (console/overlay).
 - `Src/app_bqueue.c`: `svc/buffer_queue.c` (shared utility).
 - `Src/utils.c`: NN runtime helper → `svc/nn_service.c` or `fal/nn_hal.c` (depending on HAL coupling).
