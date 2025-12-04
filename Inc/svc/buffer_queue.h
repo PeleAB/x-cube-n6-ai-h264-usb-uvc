@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    app_bqueue.h
+ * @file    buffer_queue.h
  * @author  GPM Application Team
  *
  ******************************************************************************
@@ -16,8 +16,8 @@
  ******************************************************************************
  */
 
-#ifndef APP_BQUEUE_H
-#define APP_BQUEUE_H
+#ifndef SVC_BUFFER_QUEUE_H
+#define SVC_BUFFER_QUEUE_H
 
 #include <stdint.h>
 
@@ -43,4 +43,4 @@ void bqueue_put_free(bqueue_t *bq);
 uint8_t *bqueue_get_ready(bqueue_t *bq);
 void bqueue_put_ready(bqueue_t *bq);
 
-#endif
+#endif /* SVC_BUFFER_QUEUE_H */

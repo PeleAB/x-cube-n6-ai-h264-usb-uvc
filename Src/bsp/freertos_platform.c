@@ -1,6 +1,6 @@
- /**
+/**
  ******************************************************************************
- * @file    freertos_bsp.c
+ * @file    freertos_platform.c
  * @author  GPM Application Team
  *
  ******************************************************************************
@@ -19,9 +19,10 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include "bsp/freertos_platform.h"
+
 #include "cmsis_compiler.h"
 #include "FreeRTOS.h"
-#include "stm32n6xx_hal.h"
 #include "task.h"
 
 #define IS_IRQ_MODE()     (__get_IPSR() != 0U)
@@ -43,10 +44,12 @@ void HAL_Delay(uint32_t Delay)
 
 HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
 {
+  (void) TickPriority;
+
   return HAL_OK;
 }
 
-void TIM4_Config()
+void TIM4_Config(void)
 {
   const uint32_t tmr_clk_freq = 100000;
   int ret;
@@ -65,7 +68,7 @@ void TIM4_Config()
   assert(ret == HAL_OK);
 }
 
-uint32_t TIM4_Get_Value()
+uint32_t TIM4_Get_Value(void)
 {
   return __HAL_TIM_GET_COUNTER(&tim4);
 }

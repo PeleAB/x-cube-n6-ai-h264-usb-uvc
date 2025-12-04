@@ -29,14 +29,14 @@ endif()
 set(APP_SOURCES
     ${PROJECT_ROOT}/Src/main.c
     ${PROJECT_ROOT}/Src/app.c
-    ${PROJECT_ROOT}/Src/app_bqueue.c
+    ${PROJECT_ROOT}/Src/svc/buffer_queue.c
     ${PROJECT_ROOT}/Src/fal/fal_camera.c
     ${PROJECT_ROOT}/Src/app_display.c
     ${PROJECT_ROOT}/Src/fal/fal_encoder.c
     ${PROJECT_ROOT}/Src/app_fuseprogramming.c
     ${PROJECT_ROOT}/Src/app_pipeline.c
     ${PROJECT_ROOT}/Src/bsp/platform.c
-    ${PROJECT_ROOT}/Src/freertos_bsp.c
+    ${PROJECT_ROOT}/Src/bsp/freertos_platform.c
     ${PROJECT_ROOT}/Src/app_stats.c
     ${PROJECT_ROOT}/Src/utils.c
     ${PROJECT_ROOT}/Src/draw.c

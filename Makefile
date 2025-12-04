@@ -46,7 +46,7 @@ BUILD_DIR = build
 # C sources
 C_SOURCES += Src/main.c
 C_SOURCES += Src/app.c
-C_SOURCES += Src/app_bqueue.c
+C_SOURCES += Src/svc/buffer_queue.c
 C_SOURCES += Src/app_display.c
 C_SOURCES += Src/app_pipeline.c
 C_SOURCES += Src/app_stats.c
@@ -58,7 +58,7 @@ C_SOURCES += Src/bsp/platform.c
 C_SOURCES += Src/stm32n6xx_it.c
 C_SOURCES += Model/network.c
 C_SOURCES += Src/fal/fal_camera.c
-C_SOURCES += Src/freertos_bsp.c
+C_SOURCES += Src/bsp/freertos_platform.c
 
 # ASM sources
 ASM_SOURCES =

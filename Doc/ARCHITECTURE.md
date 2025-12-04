@@ -21,7 +21,7 @@ Current-to-target mapping (proposed)
 - `Src/app_display.c`: split into `svc/overlay_renderer.c`, `svc/encoder_service.c`, `svc/uvc_sink.c`; DMA2D locking moves to `fal/dma2d_hal.c`.
 - `Src/fal/fal_encoder.c`: HAL wrapper for encoder (was `Src/app_enc.c`); a service should wrap it with policy (GOP, bitrate) and keyframe control.
 - `Src/app_stats.c`: `svc/stats_service.c` with optional sinks (console/overlay).
-- `Src/app_bqueue.c`: `svc/buffer_queue.c` (shared utility).
+- `Src/svc/buffer_queue.c`: shared utility (formerly `Src/app_bqueue.c`).
 - `Src/utils.c`: NN runtime helper → `svc/nn_service.c` or `fal/nn_hal.c` (depending on HAL coupling).
 - `Src/app_fuseprogramming.c`, `Src/freertos_bsp.c`: board-specific init/hooks → `bsp`.
 

@@ -24,7 +24,7 @@
 
 #include "app.h"
 #include "app_config.h"
-#include "app_bqueue.h"
+#include "svc/buffer_queue.h"
 #include "fal/fal_camera.h"
 #include "app_config.h"
 #include "app_display.h"
