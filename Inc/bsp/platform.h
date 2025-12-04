@@ -29,6 +29,8 @@ void IAC_Config(void);
 void CONSOLE_Config(void);
 void Setup_Mpu(void);
 void DMA2D_Config(void);
+void BSP_EarlyPlatformInit(void);
+void BSP_PlatformInit(void);
 
 HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp);
 void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd);

@@ -28,20 +28,22 @@ endif()
 # ------------------------------ Sources --------------------------------- #
 set(APP_SOURCES
     ${PROJECT_ROOT}/Src/main.c
-    ${PROJECT_ROOT}/Src/app.c
+    ${PROJECT_ROOT}/Src/app/app.c
     ${PROJECT_ROOT}/Src/svc/buffer_queue.c
     ${PROJECT_ROOT}/Src/fal/fal_camera.c
-    ${PROJECT_ROOT}/Src/app_display.c
+    ${PROJECT_ROOT}/Src/svc/app_display.c
     ${PROJECT_ROOT}/Src/fal/fal_encoder.c
-    ${PROJECT_ROOT}/Src/app_fuseprogramming.c
-    ${PROJECT_ROOT}/Src/app_pipeline.c
+    ${PROJECT_ROOT}/Src/bsp/fuse_programming.c
+    ${PROJECT_ROOT}/Src/app/app_pipeline.c
     ${PROJECT_ROOT}/Src/bsp/platform.c
     ${PROJECT_ROOT}/Src/bsp/freertos_platform.c
-    ${PROJECT_ROOT}/Src/app_stats.c
-    ${PROJECT_ROOT}/Src/utils.c
-    ${PROJECT_ROOT}/Src/draw.c
-    ${PROJECT_ROOT}/Src/stm32n6xx_it.c
-    ${PROJECT_ROOT}/Src/stm32_lcd_ex.c
+    ${PROJECT_ROOT}/Src/svc/app_stats.c
+    ${PROJECT_ROOT}/Src/svc/utils.c
+    ${PROJECT_ROOT}/Src/svc/draw.c
+    ${PROJECT_ROOT}/Src/bsp/stm32n6xx_it.c
+    ${PROJECT_ROOT}/Src/svc/stm32_lcd_ex.c
+    ${PROJECT_ROOT}/Src/fal/fal_cache.c
+    ${PROJECT_ROOT}/Src/fal/fal_dma2d.c
     ${PROJECT_ROOT}/Model/network.c
     ${PROJECT_ROOT}/Gcc/Src/console.c
     ${PROJECT_ROOT}/Gcc/Src/freertos_libc.c
@@ -198,6 +200,10 @@ set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME "Project")
 # ------------------------------ Includes -------------------------------- #
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${PROJECT_ROOT}/Inc
+    ${PROJECT_ROOT}/Inc/app
+    ${PROJECT_ROOT}/Inc/svc
+    ${PROJECT_ROOT}/Inc/bsp
+    ${PROJECT_ROOT}/Inc/fal
     ${PROJECT_ROOT}/Model
     ${LIB_ROOT}/ai-postprocessing-wrapper
     ${LIB_ROOT}/lib_vision_models_pp/lib_vision_models_pp/Inc

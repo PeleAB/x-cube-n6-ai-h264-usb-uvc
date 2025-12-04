@@ -15,7 +15,7 @@ Cameras allow flipping the image along two axes.
 - `CMW_MIRRORFLIP_FLIP_MIRROR`: Flip both axes
 - `CMW_MIRRORFLIP_NONE`: Default
 
-1. Open [app_config.h](../Inc/app_config.h).
+1. Open [app_config.h](../Inc/app/app_config.h).
 
 2. Change the `SENSOR_<YOUR_SENSOR_NAME>_FLIP` define:
 ```c

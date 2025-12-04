@@ -16,7 +16,7 @@
  ******************************************************************************
  */
 
-#include "app_stats.h"
+#include "svc/app_stats.h"
 
 #include <assert.h>
 #include <string.h>

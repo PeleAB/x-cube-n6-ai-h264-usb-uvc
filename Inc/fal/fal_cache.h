@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    fal_camera.h
+ * @file    fal_cache.h
  * @author  GPM Application Team
  *
  ******************************************************************************
@@ -16,21 +16,14 @@
  ******************************************************************************
  */
 
-#ifndef FAL_CAMERA_H
-#define FAL_CAMERA_H
+#ifndef FAL_CACHE_H
+#define FAL_CACHE_H
 
-#include <stdint.h>
+#include <stddef.h>
 
-#include "cmw_camera.h"
+int FAL_CacheIsEnabled(void);
+void FAL_CacheInvalidate(void *addr, size_t len);
+void FAL_CacheClean(void *addr, size_t len);
+void FAL_CacheCleanInvalidate(void *addr, size_t len);
 
-void CAM_Init(void);
-void CAM_DisplayPipe_Start(uint8_t *display_pipe_dst, uint32_t cam_mode);
-void CAM_NNPipe_Start(uint8_t *nn_pipe_dst, uint32_t cam_mode);
-void CAM_IspUpdate(void);
-int CAM_DisplayPipe_UpdateAddress(uint8_t *display_pipe_dst);
-int CAM_NNPipe_UpdateAddress(uint8_t *nn_pipe_dst);
-
-int CAM_GetVencWidth(void);
-int CAM_GetVencHeight(void);
-
-#endif /* FAL_CAMERA_H */
+#endif /* FAL_CACHE_H */

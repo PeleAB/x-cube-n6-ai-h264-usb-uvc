@@ -24,6 +24,7 @@
 #include "h264encapi.h"
 #include "jpegencapi.h"
 #include "stm32n6xx_hal.h"
+#include "stm32n6xx_ll_venc.h"
 #include "utils.h"
 #include "ewl.h"
 
@@ -195,6 +196,9 @@ void ENC_Init(ENC_Conf_t *p_conf)
   H264EncRateCtrl rate;
   int target_bitrate;
   int ret;
+
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  LL_VENC_Init();
 
   memset(&config, 0, sizeof(config));
   p_ctx->gop_len = p_conf->fps - 1;

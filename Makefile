@@ -45,20 +45,23 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES += Src/main.c
-C_SOURCES += Src/app.c
+C_SOURCES += Src/app/app.c
 C_SOURCES += Src/svc/buffer_queue.c
-C_SOURCES += Src/app_display.c
-C_SOURCES += Src/app_pipeline.c
-C_SOURCES += Src/app_stats.c
-C_SOURCES += Src/utils.c
-C_SOURCES += Src/draw.c
+C_SOURCES += Src/svc/app_display.c
+C_SOURCES += Src/app/app_pipeline.c
+C_SOURCES += Src/svc/app_stats.c
+C_SOURCES += Src/svc/utils.c
+C_SOURCES += Src/svc/draw.c
+C_SOURCES += Src/svc/stm32_lcd_ex.c
 C_SOURCES += Src/fal/fal_encoder.c
-C_SOURCES += Src/app_fuseprogramming.c
+C_SOURCES += Src/bsp/fuse_programming.c
 C_SOURCES += Src/bsp/platform.c
-C_SOURCES += Src/stm32n6xx_it.c
+C_SOURCES += Src/bsp/stm32n6xx_it.c
 C_SOURCES += Model/network.c
 C_SOURCES += Src/fal/fal_camera.c
 C_SOURCES += Src/bsp/freertos_platform.c
+C_SOURCES += Src/fal/fal_cache.c
+C_SOURCES += Src/fal/fal_dma2d.c
 
 # ASM sources
 ASM_SOURCES =
@@ -113,7 +116,7 @@ C_DEFS += -DTX_MAX_PARALLEL_NETWORKS=1
 
 # C includes
 # Patched files
-C_INCLUDES += -IInc -IModel
+C_INCLUDES += -IInc -IInc/app -IInc/svc -IInc/bsp -IInc/fal -IModel
 
 
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections -fcyclomatic-complexity

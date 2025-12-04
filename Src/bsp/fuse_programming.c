@@ -16,6 +16,8 @@
  ******************************************************************************
  */
 
+#include "bsp/fuse_programming.h"
+
 #include "stm32n6xx_hal_bsec.h"
 static void ErrorHandler(void);
 

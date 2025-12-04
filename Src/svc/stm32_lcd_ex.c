@@ -17,7 +17,7 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32_lcd_ex.h"
+#include "svc/stm32_lcd_ex.h"
 #include <stdio.h>
 #include <stdarg.h>
 

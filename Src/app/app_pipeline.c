@@ -16,38 +16,29 @@
  ******************************************************************************
  */
 
-#include "app_pipeline.h"
+#include "app/app_pipeline.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
-#include "app.h"
-#include "app_config.h"
-#include "svc/buffer_queue.h"
-#include "fal/fal_camera.h"
-#include "app_config.h"
-#include "app_display.h"
+#include "app/app.h"
+#include "app/app_config.h"
 #include "app_postprocess.h"
-#include "app_stats.h"
-#include "cmw_camera.h"
+#include "fal/fal_cache.h"
+#include "fal/fal_camera.h"
+#include "svc/app_display.h"
+#include "svc/app_stats.h"
+#include "svc/buffer_queue.h"
 #include "isp_api.h"
 #include "network.h"
-#include "stm32n6570_discovery.h"
 #include "stm32n6xx_hal.h"
-#include "stm32n6xx_ll_venc.h"
 #include "utils.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "task.h"
 
 #define FREERTOS_PRIORITY(p) ((UBaseType_t)((int)tskIDLE_PRIORITY + configMAX_PRIORITIES / 2 + (p)))
-
-#define CACHE_OP(__op__) do { \
-  if (is_cache_enable()) { \
-    __op__; \
-  } \
-} while (0)
 
 #define ALIGN_VALUE(_v_,_a_) (((_v_) + (_a_) - 1) & ~((_a_) - 1))
 
@@ -81,24 +72,14 @@ static StackType_t isp_thread_stack[2 *configMINIMAL_STACK_SIZE];
 static SemaphoreHandle_t isp_sem;
 static StaticSemaphore_t isp_sem_buffer;
 
-static int is_cache_enable(void)
-{
-#if defined(USE_DCACHE)
-  return 1;
-#else
-  return 0;
-#endif
-}
-
 static void app_main_pipe_frame_event(void)
 {
   int next_disp_idx = (capture_buffer_disp_idx + 1) % CAPTURE_BUFFER_NB;
   int next_capt_idx = (capture_buffer_capt_idx + 1) % CAPTURE_BUFFER_NB;
   int ret;
 
-  ret = HAL_DCMIPP_PIPE_SetMemoryAddress(CMW_CAMERA_GetDCMIPPHandle(), DCMIPP_PIPE1,
-                                         DCMIPP_MEMORY_ADDRESS_0, (uint32_t) capture_buffer[next_capt_idx]);
-  assert(ret == HAL_OK);
+  ret = CAM_DisplayPipe_UpdateAddress(capture_buffer[next_capt_idx]);
+  assert(ret == 0);
 
   capture_buffer_disp_idx = next_disp_idx;
   capture_buffer_capt_idx = next_capt_idx;
@@ -111,9 +92,8 @@ static void app_ancillary_pipe_frame_event(void)
 
   next_buffer = bqueue_get_free(&nn_input_queue, 0);
   if (next_buffer) {
-    ret = HAL_DCMIPP_PIPE_SetMemoryAddress(CMW_CAMERA_GetDCMIPPHandle(), DCMIPP_PIPE2,
-                                           DCMIPP_MEMORY_ADDRESS_0, (uint32_t) next_buffer);
-    assert(ret == HAL_OK);
+    ret = CAM_NNPipe_UpdateAddress(next_buffer);
+    assert(ret == 0);
     bqueue_put_ready(&nn_input_queue);
   }
 }
@@ -173,7 +153,8 @@ static void nn_thread_fct(void *arg)
     total_ts = HAL_GetTick();
     ts = HAL_GetTick();
     ret = LL_ATON_Set_User_Input_Buffer_Default(0, capture_buffer_local, nn_in_len);
-    CACHE_OP(SCB_InvalidateDCache_by_Addr(output_buffer, nn_out_len));
+    assert(ret == LL_ATON_User_IO_NOERROR);
+    FAL_CacheInvalidate(output_buffer, nn_out_len);
     ret = LL_ATON_Set_User_Output_Buffer_Default(0, output_buffer, nn_out_len);
     assert(ret == LL_ATON_User_IO_NOERROR);
     Run_Inference(&NN_Instance_Default);

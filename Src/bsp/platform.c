@@ -20,14 +20,101 @@
 
 #include <assert.h>
 
+#include "app/app_config.h"
+#include "bsp/freertos_platform.h"
+#include "bsp/fuse_programming.h"
 #include "npu_cache.h"
 #include "stm32n6570_discovery.h"
 #include "stm32n6570_discovery_lcd.h"
+#include "stm32n6570_discovery_xspi.h"
 #include "stm32n6xx_hal_rif.h"
 
 extern int __uncached_bss_start__;
 extern int __uncached_bss_end__;
 extern UART_HandleTypeDef huart1;
+extern void vPortSetupTimerInterrupt(void);
+
+void BSP_EarlyPlatformInit(void)
+{
+  /* Power on ICACHE */
+  MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_ICACTIVE_Msk;
+
+  /* Set back system and CPU clock source to HSI */
+  __HAL_RCC_CPUCLK_CONFIG(RCC_CPUCLKSOURCE_HSI);
+  __HAL_RCC_SYSCLK_CONFIG(RCC_SYSCLKSOURCE_HSI);
+
+  HAL_Init();
+
+  Setup_Mpu();
+
+  SCB_EnableICache();
+
+#if defined(USE_DCACHE)
+  /* Power on DCACHE */
+  MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_DCACTIVE_Msk;
+  SCB_EnableDCache();
+#endif
+}
+
+void BSP_PlatformInit(void)
+{
+  BSP_XSPI_NOR_Init_t NOR_Init;
+  int ret;
+
+  /* Call SystemClock_Config() after vTaskStartScheduler() since it call HAL_Delay() which call vTaskDelay(). Drawback
+   * is that we must call vPortSetupTimerInterrupt() since SystemCoreClock value has been modified by SystemClock_Config()
+   */
+  SystemClock_Config();
+  vPortSetupTimerInterrupt();
+  TIM4_Config();
+
+  CONSOLE_Config();
+
+  NPURam_enable();
+  Fuse_Programming();
+
+  DMA2D_Config();
+
+  NPUCache_config();
+
+  /*** External RAM and NOR Flash *********************************************/
+  BSP_XSPI_RAM_Init(0);
+  BSP_XSPI_RAM_EnableMemoryMappedMode(0);
+
+  NOR_Init.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
+  NOR_Init.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
+  BSP_XSPI_NOR_Init(0, &NOR_Init);
+  BSP_XSPI_NOR_EnableMemoryMappedMode(0);
+
+  /* Set all required IPs as secure privileged */
+  Security_Config();
+
+  IAC_Config();
+
+  /* Keep all IP's enabled during WFE so they can wake up CPU. Fine tune
+   * this if you want to save maximum power
+   */
+  LL_BUS_EnableClockLowPower(~0);
+  LL_MEM_EnableClockLowPower(~0);
+  LL_AHB1_GRP1_EnableClockLowPower(~0);
+  LL_AHB2_GRP1_EnableClockLowPower(~0);
+  LL_AHB3_GRP1_EnableClockLowPower(~0);
+  LL_AHB4_GRP1_EnableClockLowPower(~0);
+  LL_AHB5_GRP1_EnableClockLowPower(~0);
+  LL_APB1_GRP1_EnableClockLowPower(~0);
+  LL_APB1_GRP2_EnableClockLowPower(~0);
+  LL_APB2_GRP1_EnableClockLowPower(~0);
+  LL_APB4_GRP1_EnableClockLowPower(~0);
+  LL_APB4_GRP2_EnableClockLowPower(~0);
+  LL_APB5_GRP1_EnableClockLowPower(~0);
+  LL_MISC_EnableClockLowPower(~0);
+
+  ret = BSP_LED_Init(LED_GREEN);
+  assert(ret == BSP_ERROR_NONE);
+
+  ret = BSP_LED_Init(LED_RED);
+  assert(ret == BSP_ERROR_NONE);
+}
 
 void NPURam_enable(void)
 {

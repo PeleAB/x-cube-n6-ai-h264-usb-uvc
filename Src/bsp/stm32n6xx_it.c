@@ -18,7 +18,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32n6xx_hal.h"
-#include "stm32n6xx_it.h"
+#include "bsp/stm32n6xx_it.h"
 
 #include "cmw_camera.h"
 #include "uvcl.h"

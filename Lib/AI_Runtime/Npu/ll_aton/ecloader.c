@@ -660,9 +660,9 @@ bool ec_copy_patch_table(ECFileEntry *patch_table, const uint8_t *binary_ptr, un
     if (*patch_table_size < size)
     {
       LL_ATON_PRINTF("Error: Memory allocated for the patch table of the Epoch Controller blob is not sufficient (at "
-                     "least space for %u "
+                     "least space for %lu "
                      "32-bit words must be allocated)\n",
-                     size);
+                     (unsigned long)size);
 
       return false;
     }

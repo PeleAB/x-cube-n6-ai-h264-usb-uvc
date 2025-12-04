@@ -20,7 +20,7 @@
 #include <stdio.h>
 
 #include "fal/fal_camera.h"
-#include "app_config.h"
+#include "app/app_config.h"
 #include "utils.h"
 
 static int sensor_width;
@@ -205,6 +205,26 @@ void CAM_NNPipe_Start(uint8_t *nn_pipe_dst, uint32_t cam_mode)
 
   ret = CMW_CAMERA_Start(DCMIPP_PIPE2, nn_pipe_dst, cam_mode);
   assert(ret == CMW_ERROR_NONE);
+}
+
+static int CAM_SetPipeAddress(uint32_t pipe, uint8_t *dst)
+{
+  int ret;
+
+  ret = HAL_DCMIPP_PIPE_SetMemoryAddress(CMW_CAMERA_GetDCMIPPHandle(), pipe, DCMIPP_MEMORY_ADDRESS_0,
+                                         (uint32_t) dst);
+
+  return (ret == HAL_OK) ? 0 : -1;
+}
+
+int CAM_DisplayPipe_UpdateAddress(uint8_t *display_pipe_dst)
+{
+  return CAM_SetPipeAddress(DCMIPP_PIPE1, display_pipe_dst);
+}
+
+int CAM_NNPipe_UpdateAddress(uint8_t *nn_pipe_dst)
+{
+  return CAM_SetPipeAddress(DCMIPP_PIPE2, nn_pipe_dst);
 }
 
 void CAM_IspUpdate(void)

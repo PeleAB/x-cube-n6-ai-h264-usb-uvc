@@ -1,6 +1,6 @@
  /**
  ******************************************************************************
- * @file    app_fuseprogramming.h
+ * @file    fuse_programming.h
  * @author  GPM Application Team
  *
  ******************************************************************************
@@ -16,8 +16,8 @@
  ******************************************************************************
  */
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __APP_FUSEPROGRAMMING_H
-#define __APP_FUSEPROGRAMMING_H
+#ifndef BSP_FUSE_PROGRAMMING_H
+#define BSP_FUSE_PROGRAMMING_H
 
 #ifdef __cplusplus
 extern "C"
@@ -31,4 +31,4 @@ void Fuse_Programming(void);
 }
 #endif
 
-#endif /*__APP_FUSEPROGRAMMING_H */
+#endif /* BSP_FUSE_PROGRAMMING_H */

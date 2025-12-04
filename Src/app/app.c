@@ -16,18 +16,15 @@
  ******************************************************************************
  */
 
-#include "app.h"
+#include "app/app.h"
 
 #include <assert.h>
 #include <stdio.h>
 
-#include "fal/fal_camera.h"
-#include "app_config.h"
-#include "app_display.h"
-#include "app_pipeline.h"
-#include "app_stats.h"
-#include "stm32n6xx_hal.h"
-#include "stm32n6xx_ll_venc.h"
+#include "app/app_config.h"
+#include "app/app_pipeline.h"
+#include "svc/app_display.h"
+#include "svc/app_stats.h"
 #include "stm32n6570_discovery.h"
 
 void app_run(void)
@@ -45,9 +42,6 @@ void app_run(void)
   app_stats_init();
   app_display_init();
   app_pipeline_init();
-
-  __HAL_RCC_SYSCFG_CLK_ENABLE();
-  LL_VENC_Init();
 
   CAM_Init();
 

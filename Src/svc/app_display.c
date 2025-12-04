@@ -16,17 +16,17 @@
  ******************************************************************************
  */
 
-#include "app_display.h"
+#include "svc/app_display.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "app_postprocess.h"
-#include "app_stats.h"
-#include "draw.h"
-#include "figs.h"
+#include "svc/app_stats.h"
+#include "svc/draw.h"
+#include "svc/figs.h"
 #include "fal/fal_encoder.h"
 #include "stm32n6570_discovery.h"
 #include "stm32n6xx_hal.h"
@@ -57,7 +57,6 @@ static SemaphoreHandle_t dma2d_lock;
 static StaticSemaphore_t dma2d_lock_buffer;
 static SemaphoreHandle_t dma2d_sem;
 static StaticSemaphore_t dma2d_sem_buffer;
-static DMA2D_HandleTypeDef *dma2d_current;
 
 static struct uvcl_callbacks uvcl_cbs;
 static int uvc_is_active;
@@ -347,10 +346,9 @@ void DRAW_HwLock(void *dma2d_handle)
 {
   int ret;
 
+  (void) dma2d_handle;
   ret = xSemaphoreTake(dma2d_lock, portMAX_DELAY);
   assert(ret == pdTRUE);
-
-  dma2d_current = dma2d_handle;
 }
 
 void DRAW_HwUnlock(void)
@@ -378,9 +376,4 @@ void DRAW_Signal(void)
   assert(ret == pdTRUE);
 
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void DMA2D_IRQHandler(void)
-{
-  HAL_DMA2D_IRQHandler(dma2d_current);
 }

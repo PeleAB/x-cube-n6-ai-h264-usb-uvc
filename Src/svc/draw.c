@@ -15,117 +15,79 @@
  *
  ******************************************************************************
  */
-#include "draw.h"
+#include "svc/draw.h"
 
 #include <assert.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "fal/fal_dma2d.h"
 #include "utils.h"
-#include "stm32n6xx_hal.h"
 
 #define MAX_LINE_CHAR 64
 
-static void draw_dma2d_cb(DMA2D_HandleTypeDef *hdma2d)
+static void draw_dma2d_cb(void *ctx)
 {
+  (void) ctx;
   DRAW_Signal();
 }
 
-static void draw_dma2d_error_cb(DMA2D_HandleTypeDef *hdma2d)
+static void draw_dma2d_error_cb(void *ctx)
 {
+  (void) ctx;
   assert(0);
 }
 
 static void draw_copy_argb_hw(uint8_t *p_dst, int dst_width, int dst_height, uint8_t *p_src, int src_width,
                               int src_height, int x_offset, int y_offset)
 {
-  DMA2D_HandleTypeDef hdma2d = { 0 };
-  uint32_t dst_addr;
+  fal_dma2d_blend_t cfg = {
+    .dst = p_dst,
+    .dst_width = (uint32_t) dst_width,
+    .dst_height = (uint32_t) dst_height,
+    .src = p_src,
+    .src_width = (uint32_t) src_width,
+    .src_height = (uint32_t) src_height,
+    .x_offset = (uint32_t) x_offset,
+    .y_offset = (uint32_t) y_offset,
+    .on_complete = draw_dma2d_cb,
+    .on_error = draw_dma2d_error_cb,
+    .user = NULL,
+  };
   int ret;
 
-  hdma2d.Instance            = DMA2D;
-  hdma2d.Init.Mode           = DMA2D_M2M_BLEND;
-  hdma2d.Init.ColorMode      = DMA2D_OUTPUT_ARGB8888;
-  hdma2d.Init.OutputOffset   = dst_width - src_width;
-  hdma2d.Init.AlphaInverted  = DMA2D_REGULAR_ALPHA;
-  hdma2d.Init.RedBlueSwap    = DMA2D_RB_REGULAR;
-  hdma2d.Init.LineOffsetMode = DMA2D_LOM_PIXELS;
-  hdma2d.Init.BytesSwap      = DMA2D_BYTES_REGULAR;
-
-  DRAW_HwLock(&hdma2d);
-  ret = HAL_DMA2D_Init(&hdma2d);
-  assert(ret == HAL_OK);
-
-  /* background layer come from dest buffer */
-  hdma2d.LayerCfg[0].InputAlpha     = 0xFF;
-  hdma2d.LayerCfg[0].InputColorMode = DMA2D_INPUT_ARGB8888;
-  hdma2d.LayerCfg[0].InputOffset    = dst_width - src_width;
-  hdma2d.LayerCfg[0].AlphaInverted  = DMA2D_REGULAR_ALPHA;
-  hdma2d.LayerCfg[0].RedBlueSwap    = DMA2D_RB_REGULAR;
-  /* foreground layer is the src layer */
-  hdma2d.LayerCfg[1].AlphaMode      = DMA2D_NO_MODIF_ALPHA;
-  hdma2d.LayerCfg[1].InputAlpha     = 0xFF;
-  hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
-  hdma2d.LayerCfg[1].InputOffset    = 0;
-  hdma2d.LayerCfg[1].AlphaInverted  = DMA2D_REGULAR_ALPHA;
-  hdma2d.LayerCfg[1].RedBlueSwap    = DMA2D_RB_REGULAR;
-  hdma2d.LayerCfg[0].AlphaMode      = DMA2D_NO_MODIF_ALPHA;
-  ret = HAL_DMA2D_ConfigLayer(&hdma2d, 1);
-  assert(ret == HAL_OK);
-  ret = HAL_DMA2D_ConfigLayer(&hdma2d, 0);
-  assert(ret == HAL_OK);
-
-  hdma2d.XferCpltCallback = draw_dma2d_cb;
-  hdma2d.XferErrorCallback = draw_dma2d_error_cb;
-  dst_addr = (uint32_t) (p_dst + (dst_width * y_offset + x_offset) * 4);
-  HAL_NVIC_EnableIRQ(DMA2D_IRQn);
-  ret = HAL_DMA2D_BlendingStart_IT(&hdma2d, (uint32_t) p_src, dst_addr, dst_addr, src_width, src_height);
-  assert(ret == HAL_OK);
+  DRAW_HwLock(NULL);
+  ret = FAL_DMA2D_Blend(&cfg);
+  assert(ret == 0);
 
   DRAW_Wfe();
-
-  HAL_NVIC_DisableIRQ(DMA2D_IRQn);
-
-  ret = HAL_DMA2D_DeInit(&hdma2d);
-  assert(ret == HAL_OK);
-
   DRAW_HwUnlock();
 }
 
 static void draw_fill_argb_hw(uint8_t *p_dst, int dst_width, int dst_height, int src_width, int src_height,
                               int x_offset, int y_offset, uint32_t color)
 {
-  DMA2D_HandleTypeDef hdma2d = { 0 };
-  uint32_t dst_addr;
+  fal_dma2d_fill_t cfg = {
+    .dst = p_dst,
+    .dst_width = (uint32_t) dst_width,
+    .dst_height = (uint32_t) dst_height,
+    .width = (uint32_t) src_width,
+    .height = (uint32_t) src_height,
+    .x_offset = (uint32_t) x_offset,
+    .y_offset = (uint32_t) y_offset,
+    .color = color,
+    .on_complete = draw_dma2d_cb,
+    .on_error = draw_dma2d_error_cb,
+    .user = NULL,
+  };
   int ret;
 
-  hdma2d.Instance          = DMA2D;
-  hdma2d.Init.Mode         = DMA2D_R2M;
-  hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
-  hdma2d.Init.OutputOffset = dst_width - src_width;
-
-  DRAW_HwLock(&hdma2d);
-  ret = HAL_DMA2D_Init(&hdma2d);
-  assert(ret == HAL_OK);
-
-  ret = HAL_DMA2D_ConfigLayer(&hdma2d, 1);
-  assert(ret == HAL_OK);
-
-  HAL_NVIC_EnableIRQ(DMA2D_IRQn);
-  hdma2d.XferCpltCallback = draw_dma2d_cb;
-  hdma2d.XferErrorCallback = draw_dma2d_error_cb;
-  dst_addr = (uint32_t) (p_dst + (dst_width * y_offset + x_offset) * 4);
-  ret = HAL_DMA2D_Start_IT(&hdma2d, color, dst_addr, src_width, src_height);
-  assert(ret == HAL_OK);
+  DRAW_HwLock(NULL);
+  ret = FAL_DMA2D_Fill(&cfg);
+  assert(ret == 0);
 
   DRAW_Wfe();
-
-  HAL_NVIC_DisableIRQ(DMA2D_IRQn);
-
-  ret = HAL_DMA2D_DeInit(&hdma2d);
-  assert(ret == HAL_OK);
-
   DRAW_HwUnlock();
 }
 
