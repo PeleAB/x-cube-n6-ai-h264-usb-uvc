@@ -1511,13 +1511,22 @@
             <name>$PROJ_DIR$\..\Src\app.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\Src\app_bqueue.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\Src\app_cam.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\Src\app_display.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\Src\app_enc.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\Src\app_fuseprogramming.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\Src\app_pipeline.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\Src\draw.c</name>
@@ -1530,6 +1539,9 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\Src\stm32n6xx_it.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\Src\app_stats.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\Src\utils.c</name>

@@ -29,10 +29,14 @@ endif()
 set(APP_SOURCES
     ${PROJECT_ROOT}/Src/main.c
     ${PROJECT_ROOT}/Src/app.c
+    ${PROJECT_ROOT}/Src/app_bqueue.c
     ${PROJECT_ROOT}/Src/app_cam.c
+    ${PROJECT_ROOT}/Src/app_display.c
     ${PROJECT_ROOT}/Src/app_enc.c
     ${PROJECT_ROOT}/Src/app_fuseprogramming.c
+    ${PROJECT_ROOT}/Src/app_pipeline.c
     ${PROJECT_ROOT}/Src/freertos_bsp.c
+    ${PROJECT_ROOT}/Src/app_stats.c
     ${PROJECT_ROOT}/Src/utils.c
     ${PROJECT_ROOT}/Src/draw.c
     ${PROJECT_ROOT}/Src/stm32n6xx_it.c

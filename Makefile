@@ -46,6 +46,10 @@ BUILD_DIR = build
 # C sources
 C_SOURCES += Src/main.c
 C_SOURCES += Src/app.c
+C_SOURCES += Src/app_bqueue.c
+C_SOURCES += Src/app_display.c
+C_SOURCES += Src/app_pipeline.c
+C_SOURCES += Src/app_stats.c
 C_SOURCES += Src/utils.c
 C_SOURCES += Src/draw.c
 C_SOURCES += Src/app_enc.c

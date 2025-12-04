@@ -18,6 +18,8 @@
 /*
   /tmp/0.h (rgba).
 */
+#include "utils.h"
+
 static const unsigned char
   fig0[] ALIGN_32 =
   {

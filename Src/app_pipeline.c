@@ -1,0 +1,286 @@
+/**
+ ******************************************************************************
+ * @file    app_pipeline.c
+ * @author  GPM Application Team
+ *
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2024 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
+
+#include "app_pipeline.h"
+
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "app.h"
+#include "app_bqueue.h"
+#include "app_cam.h"
+#include "app_config.h"
+#include "app_display.h"
+#include "app_postprocess.h"
+#include "app_stats.h"
+#include "cmw_camera.h"
+#include "isp_api.h"
+#include "network.h"
+#include "stm32n6570_discovery.h"
+#include "stm32n6xx_hal.h"
+#include "stm32n6xx_ll_venc.h"
+#include "utils.h"
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "task.h"
+
+#define FREERTOS_PRIORITY(p) ((UBaseType_t)((int)tskIDLE_PRIORITY + configMAX_PRIORITIES / 2 + (p)))
+
+#define CACHE_OP(__op__) do { \
+  if (is_cache_enable()) { \
+    __op__; \
+  } \
+} while (0)
+
+#define ALIGN_VALUE(_v_,_a_) (((_v_) + (_a_) - 1) & ~((_a_) - 1))
+
+#define CAPTURE_BUFFER_NB (CAPTURE_DELAY + 2)
+#define VENC_MAX_WIDTH 1280
+#define VENC_MAX_HEIGHT 720
+
+/* Model Related Info */
+#define NN_BUFFER_OUT_SIZE LL_ATON_DEFAULT_OUT_1_SIZE_BYTES
+#define NN_BUFFER_OUT_SIZE_ALIGN ALIGN_VALUE(NN_BUFFER_OUT_SIZE, 32)
+
+/* capture buffers */
+static uint8_t capture_buffer[CAPTURE_BUFFER_NB][VENC_MAX_WIDTH * VENC_MAX_HEIGHT * CAPTURE_BPP] ALIGN_32 IN_PSRAM;
+static int capture_buffer_disp_idx = 1;
+static int capture_buffer_capt_idx = 0;
+
+/* model */
+LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(Default);
+static uint8_t nn_input_buffers[2][NN_WIDTH * NN_HEIGHT * NN_BPP] ALIGN_32 IN_PSRAM;
+static bqueue_t nn_input_queue;
+static uint8_t nn_output_buffers[2][NN_BUFFER_OUT_SIZE_ALIGN] ALIGN_32;
+static bqueue_t nn_output_queue;
+
+/* tasks */
+static StaticTask_t nn_thread;
+static StackType_t nn_thread_stack[2 * configMINIMAL_STACK_SIZE];
+static StaticTask_t dp_thread;
+static StackType_t dp_thread_stack[2 *configMINIMAL_STACK_SIZE];
+static StaticTask_t isp_thread;
+static StackType_t isp_thread_stack[2 *configMINIMAL_STACK_SIZE];
+static SemaphoreHandle_t isp_sem;
+static StaticSemaphore_t isp_sem_buffer;
+
+static int is_cache_enable(void)
+{
+#if defined(USE_DCACHE)
+  return 1;
+#else
+  return 0;
+#endif
+}
+
+static void app_main_pipe_frame_event(void)
+{
+  int next_disp_idx = (capture_buffer_disp_idx + 1) % CAPTURE_BUFFER_NB;
+  int next_capt_idx = (capture_buffer_capt_idx + 1) % CAPTURE_BUFFER_NB;
+  int ret;
+
+  ret = HAL_DCMIPP_PIPE_SetMemoryAddress(CMW_CAMERA_GetDCMIPPHandle(), DCMIPP_PIPE1,
+                                         DCMIPP_MEMORY_ADDRESS_0, (uint32_t) capture_buffer[next_capt_idx]);
+  assert(ret == HAL_OK);
+
+  capture_buffer_disp_idx = next_disp_idx;
+  capture_buffer_capt_idx = next_capt_idx;
+}
+
+static void app_ancillary_pipe_frame_event(void)
+{
+  uint8_t *next_buffer;
+  int ret;
+
+  next_buffer = bqueue_get_free(&nn_input_queue, 0);
+  if (next_buffer) {
+    ret = HAL_DCMIPP_PIPE_SetMemoryAddress(CMW_CAMERA_GetDCMIPPHandle(), DCMIPP_PIPE2,
+                                           DCMIPP_MEMORY_ADDRESS_0, (uint32_t) next_buffer);
+    assert(ret == HAL_OK);
+    bqueue_put_ready(&nn_input_queue);
+  }
+}
+
+static void app_main_pipe_vsync_event(void)
+{
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  int ret;
+
+  ret = xSemaphoreGiveFromISR(isp_sem, &xHigherPriorityTaskWoken);
+  if (ret == pdTRUE)
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+static void nn_thread_fct(void *arg)
+{
+  const LL_Buffer_InfoTypeDef *nn_out_info = LL_ATON_Output_Buffers_Info_Default();
+  const LL_Buffer_InfoTypeDef *nn_in_info = LL_ATON_Input_Buffers_Info_Default();
+  stat_info_t *stats = app_stats_state();
+  uint32_t nn_period_ms;
+  uint32_t nn_period[2];
+  uint8_t *nn_pipe_dst;
+  uint32_t nn_out_len;
+  uint32_t nn_in_len;
+  uint32_t total_ts;
+  uint32_t ts;
+  int ret;
+
+  (void) nn_period_ms;
+
+  LL_ATON_RT_RuntimeInit();
+  LL_ATON_RT_Init_Network(&NN_Instance_Default);
+
+  nn_in_len = LL_Buffer_len(&nn_in_info[0]);
+  nn_out_len = LL_Buffer_len(&nn_out_info[0]);
+  assert(nn_out_len == NN_BUFFER_OUT_SIZE);
+
+  nn_period[1] = HAL_GetTick();
+
+  nn_pipe_dst = bqueue_get_free(&nn_input_queue, 0);
+  assert(nn_pipe_dst);
+  CAM_NNPipe_Start(nn_pipe_dst, CMW_MODE_CONTINUOUS);
+  while (1)
+  {
+    uint8_t *capture_buffer_local;
+    uint8_t *output_buffer;
+
+    nn_period[0] = nn_period[1];
+    nn_period[1] = HAL_GetTick();
+    nn_period_ms = nn_period[1] - nn_period[0];
+
+    capture_buffer_local = bqueue_get_ready(&nn_input_queue);
+    assert(capture_buffer_local);
+    output_buffer = bqueue_get_free(&nn_output_queue, 1);
+    assert(output_buffer);
+
+    total_ts = HAL_GetTick();
+    ts = HAL_GetTick();
+    ret = LL_ATON_Set_User_Input_Buffer_Default(0, capture_buffer_local, nn_in_len);
+    CACHE_OP(SCB_InvalidateDCache_by_Addr(output_buffer, nn_out_len));
+    ret = LL_ATON_Set_User_Output_Buffer_Default(0, output_buffer, nn_out_len);
+    assert(ret == LL_ATON_User_IO_NOERROR);
+    Run_Inference(&NN_Instance_Default);
+    time_stat_update(&stats->nn_inference_time, HAL_GetTick() - ts);
+
+    bqueue_put_free(&nn_input_queue);
+    bqueue_put_ready(&nn_output_queue);
+
+    time_stat_update(&stats->nn_total_time, HAL_GetTick() - total_ts);
+  }
+}
+
+static void dp_thread_fct(void *arg)
+{
+  od_yolov2_pp_static_param_t pp_params;
+  od_pp_out_t pp_output;
+  stat_info_t *stats = app_stats_state();
+  uint32_t total_ts;
+  void *pp_input;
+  int is_dp_done;
+  uint32_t ts;
+  int ret;
+
+  app_postprocess_init(&pp_params, &NN_Instance_Default);
+  while (1)
+  {
+    uint8_t *output_buffer;
+
+    output_buffer = bqueue_get_ready(&nn_output_queue);
+    assert(output_buffer);
+    total_ts = HAL_GetTick();
+
+    ts = HAL_GetTick();
+    pp_input = (void *) output_buffer;
+    pp_output.pOutBuff = NULL;
+    ret = app_postprocess_run((void * []){pp_input}, 1, &pp_output, &pp_params);
+    assert(ret == AI_OD_POSTPROCESS_ERROR_NO);
+    time_stat_update(&stats->nn_pp_time, HAL_GetTick() - ts);
+    app_stats_cpuload_update();
+
+    is_dp_done = app_display_render(capture_buffer[capture_buffer_disp_idx], &pp_output);
+
+    if (is_dp_done)
+      time_stat_update(&stats->disp_total_time, HAL_GetTick() - total_ts);
+
+    bqueue_put_free(&nn_output_queue);
+  }
+}
+
+static void isp_thread_fct(void *arg)
+{
+  int ret;
+
+  while (1) {
+    ret = xSemaphoreTake(isp_sem, portMAX_DELAY);
+    assert(ret == pdTRUE);
+
+    CAM_IspUpdate();
+  }
+}
+
+void app_pipeline_init(void)
+{
+  int ret;
+
+  ret = bqueue_init(&nn_input_queue, 2, (uint8_t *[2]){nn_input_buffers[0], nn_input_buffers[1]});
+  assert(ret == 0);
+  ret = bqueue_init(&nn_output_queue, 2, (uint8_t *[2]){nn_output_buffers[0], nn_output_buffers[1]});
+  assert(ret == 0);
+
+  isp_sem = xSemaphoreCreateCountingStatic(1, 0, &isp_sem_buffer);
+  assert(isp_sem);
+}
+
+void app_pipeline_start(void)
+{
+  UBaseType_t isp_priority = FREERTOS_PRIORITY(2);
+  UBaseType_t dp_priority = FREERTOS_PRIORITY(-2);
+  UBaseType_t nn_priority = FREERTOS_PRIORITY(1);
+  TaskHandle_t hdl;
+
+  CAM_DisplayPipe_Start(capture_buffer[0], CMW_MODE_CONTINUOUS);
+
+  hdl = xTaskCreateStatic(nn_thread_fct, "nn", configMINIMAL_STACK_SIZE * 2, NULL, nn_priority, nn_thread_stack,
+                          &nn_thread);
+  assert(hdl != NULL);
+  hdl = xTaskCreateStatic(dp_thread_fct, "dp", configMINIMAL_STACK_SIZE * 2, NULL, dp_priority, dp_thread_stack,
+                          &dp_thread);
+  assert(hdl != NULL);
+  hdl = xTaskCreateStatic(isp_thread_fct, "isp", configMINIMAL_STACK_SIZE * 2, NULL, isp_priority, isp_thread_stack,
+                          &isp_thread);
+  assert(hdl != NULL);
+}
+
+int CMW_CAMERA_PIPE_FrameEventCallback(uint32_t pipe)
+{
+  if (pipe == DCMIPP_PIPE1)
+    app_main_pipe_frame_event();
+  else if (pipe == DCMIPP_PIPE2)
+    app_ancillary_pipe_frame_event();
+
+  return HAL_OK;
+}
+
+int CMW_CAMERA_PIPE_VsyncEventCallback(uint32_t pipe)
+{
+  if (pipe == DCMIPP_PIPE1)
+    app_main_pipe_vsync_event();
+
+  return HAL_OK;
+}
