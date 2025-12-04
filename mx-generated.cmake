@@ -35,6 +35,7 @@ set(APP_SOURCES
     ${PROJECT_ROOT}/Src/app_enc.c
     ${PROJECT_ROOT}/Src/app_fuseprogramming.c
     ${PROJECT_ROOT}/Src/app_pipeline.c
+    ${PROJECT_ROOT}/Src/bsp/platform.c
     ${PROJECT_ROOT}/Src/freertos_bsp.c
     ${PROJECT_ROOT}/Src/app_stats.c
     ${PROJECT_ROOT}/Src/utils.c

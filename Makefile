@@ -54,6 +54,7 @@ C_SOURCES += Src/utils.c
 C_SOURCES += Src/draw.c
 C_SOURCES += Src/app_enc.c
 C_SOURCES += Src/app_fuseprogramming.c
+C_SOURCES += Src/bsp/platform.c
 C_SOURCES += Src/stm32n6xx_it.c
 C_SOURCES += Model/network.c
 C_SOURCES += Src/app_cam.c
