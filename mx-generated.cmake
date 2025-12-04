@@ -30,7 +30,7 @@ set(APP_SOURCES
     ${PROJECT_ROOT}/Src/main.c
     ${PROJECT_ROOT}/Src/app.c
     ${PROJECT_ROOT}/Src/app_bqueue.c
-    ${PROJECT_ROOT}/Src/app_cam.c
+    ${PROJECT_ROOT}/Src/fal/fal_camera.c
     ${PROJECT_ROOT}/Src/app_display.c
     ${PROJECT_ROOT}/Src/app_enc.c
     ${PROJECT_ROOT}/Src/app_fuseprogramming.c

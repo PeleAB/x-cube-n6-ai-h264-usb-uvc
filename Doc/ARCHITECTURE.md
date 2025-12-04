@@ -16,7 +16,7 @@ Directory layout (created, content to be migrated incrementally)
 
 Current-to-target mapping (proposed)
 - `Src/main.c`: move clock/security/cache/console setup into `bsp/platform_*.c`; keep RTOS entry/orchestration in `app/main_thread.c`.
-- `Src/app_cam.c`: split hardware config into `fal/camera_hal.c` + sensor profile handling/start-stop into `svc/camera_service.c`.
+- `Src/fal/fal_camera.c`: hardware config wrapper over HAL (formerly `Src/app_cam.c`), sensor profile handling will move to `svc/camera_service.c`.
 - `Src/app_pipeline.c`: move buffer queue to `svc/bqueue.c`, pipeline coordination/tasks to `app/pipeline_orchestrator.c`, and ISR callbacks to an event path that returns buffers via the service.
 - `Src/app_display.c`: split into `svc/overlay_renderer.c`, `svc/encoder_service.c`, `svc/uvc_sink.c`; DMA2D locking moves to `fal/dma2d_hal.c`.
 - `Src/app_enc.c`: becomes `fal/encoder_hal.c`; service wraps it with policy (GOP, bitrate) and keyframe control.

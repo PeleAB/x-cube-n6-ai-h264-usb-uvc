@@ -254,3 +254,76 @@ void DMA2D_Config(void)
   __HAL_RCC_DMA2D_FORCE_RESET();
   __HAL_RCC_DMA2D_RELEASE_RESET();
 }
+
+HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp)
+{
+  RCC_PeriphCLKInitTypeDef RCC_PeriphCLKInitStruct = {0};
+  HAL_StatusTypeDef ret;
+
+  (void) hdcmipp;
+
+  RCC_PeriphCLKInitStruct.PeriphClockSelection = RCC_PERIPHCLK_DCMIPP;
+  RCC_PeriphCLKInitStruct.DcmippClockSelection = RCC_DCMIPPCLKSOURCE_IC17;
+  RCC_PeriphCLKInitStruct.ICSelection[RCC_IC17].ClockSelection = RCC_ICCLKSOURCE_PLL2;
+  RCC_PeriphCLKInitStruct.ICSelection[RCC_IC17].ClockDivider = 3;
+  ret = HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphCLKInitStruct);
+  if (ret)
+    return ret;
+
+  RCC_PeriphCLKInitStruct.PeriphClockSelection = RCC_PERIPHCLK_CSI;
+  RCC_PeriphCLKInitStruct.ICSelection[RCC_IC18].ClockSelection = RCC_ICCLKSOURCE_PLL1;
+  RCC_PeriphCLKInitStruct.ICSelection[RCC_IC18].ClockDivider = 40;
+  ret = HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphCLKInitStruct);
+  if (ret)
+    return ret;
+
+  return HAL_OK;
+}
+
+void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
+{
+  assert(hpcd->Instance == USB1_OTG_HS);
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  /* Enable the VDD33USB independent USB 33 voltage monitor */
+  HAL_PWREx_EnableVddUSBVMEN();
+
+  /* Wait until VDD33USB is ready */
+  while (__HAL_PWR_GET_FLAG(PWR_FLAG_USB33RDY) == 0U);
+
+  /* Enable VDDUSB supply */
+  HAL_PWREx_EnableVddUSB();
+
+  /* Enable USB1 OTG clock */
+  __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
+
+  /* Set FSEL to 24 Mhz */
+  USB1_HS_PHYC->USBPHYC_CR &= ~(0x7U << 0x4U);
+  USB1_HS_PHYC->USBPHYC_CR |= (0x2U << 0x4U);
+
+  /* Enable USB1 OTG PHY clock */
+  __HAL_RCC_USB1_OTG_HS_PHY_CLK_ENABLE();
+
+  /* Enable USB OTG interrupt */
+  HAL_NVIC_EnableIRQ(USB1_OTG_HS_IRQn);
+}
+
+void HAL_CACHEAXI_MspInit(CACHEAXI_HandleTypeDef *hcacheaxi)
+{
+  (void) hcacheaxi;
+
+  __HAL_RCC_CACHEAXIRAM_MEM_CLK_ENABLE();
+  __HAL_RCC_CACHEAXI_CLK_ENABLE();
+  __HAL_RCC_CACHEAXI_FORCE_RESET();
+  __HAL_RCC_CACHEAXI_RELEASE_RESET();
+}
+
+void HAL_CACHEAXI_MspDeInit(CACHEAXI_HandleTypeDef *hcacheaxi)
+{
+  (void) hcacheaxi;
+
+  __HAL_RCC_CACHEAXIRAM_MEM_CLK_DISABLE();
+  __HAL_RCC_CACHEAXI_CLK_DISABLE();
+  __HAL_RCC_CACHEAXI_FORCE_RESET();
+}

@@ -30,6 +30,11 @@ void CONSOLE_Config(void);
 void Setup_Mpu(void);
 void DMA2D_Config(void);
 
+HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp);
+void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd);
+void HAL_CACHEAXI_MspInit(CACHEAXI_HandleTypeDef *hcacheaxi);
+void HAL_CACHEAXI_MspDeInit(CACHEAXI_HandleTypeDef *hcacheaxi);
+
 void IAC_IRQHandler(void);
 
 #endif /* BSP_PLATFORM_H */

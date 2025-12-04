@@ -57,7 +57,7 @@ C_SOURCES += Src/app_fuseprogramming.c
 C_SOURCES += Src/bsp/platform.c
 C_SOURCES += Src/stm32n6xx_it.c
 C_SOURCES += Model/network.c
-C_SOURCES += Src/app_cam.c
+C_SOURCES += Src/fal/fal_camera.c
 C_SOURCES += Src/freertos_bsp.c
 
 # ASM sources

@@ -19,18 +19,10 @@
 #ifndef APP_H
 #define APP_H
 
-#include "app_cam.h"
+#include "fal/fal_camera.h"
 
 #define VENC_WIDTH CAM_GetVencWidth()
 #define VENC_HEIGHT CAM_GetVencHeight()
-#define CAPTURE_FORMAT DCMIPP_PIXEL_PACKER_FORMAT_ARGB8888
-#define CAPTURE_BPP 4
-
-/* Model Related Info */
-#define NN_WIDTH 224
-#define NN_HEIGHT 224
-#define NN_FORMAT DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1
-#define NN_BPP 3
 
 void app_run(void);
 

@@ -45,6 +45,17 @@
 #define VENC_VD55G1_WIDTH 640
 #define VENC_VD55G1_HEIGHT 480
 
+#define CAMERA_FPS 30
+
+#define CAPTURE_FORMAT DCMIPP_PIXEL_PACKER_FORMAT_ARGB8888
+#define CAPTURE_BPP 4
+
+/* Model Related Info */
+#define NN_WIDTH 224
+#define NN_HEIGHT 224
+#define NN_FORMAT DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1
+#define NN_BPP 3
+
 /* Delay display by CAPTURE_DELAY frame number */
 #define CAPTURE_DELAY 1
 

@@ -1,12 +1,12 @@
- /**
+/**
  ******************************************************************************
- * @file    app_cam.h
+ * @file    fal_camera.h
  * @author  GPM Application Team
  *
  ******************************************************************************
  * @attention
  *
- * Copyright (c) 2023 STMicroelectronics.
+ * Copyright (c) 2024 STMicroelectronics.
  * All rights reserved.
  *
  * This software is licensed under terms that can be found in the LICENSE file
@@ -15,18 +15,20 @@
  *
  ******************************************************************************
  */
-#ifndef APP_CAM
-#define APP_CAM
+
+#ifndef FAL_CAMERA_H
+#define FAL_CAMERA_H
 
 #include <stdint.h>
 
-#define CAMERA_FPS 30
+#include "cmw_camera.h"
 
 void CAM_Init(void);
 void CAM_DisplayPipe_Start(uint8_t *display_pipe_dst, uint32_t cam_mode);
 void CAM_NNPipe_Start(uint8_t *nn_pipe_dst, uint32_t cam_mode);
 void CAM_IspUpdate(void);
+
 int CAM_GetVencWidth(void);
 int CAM_GetVencHeight(void);
 
-#endif
+#endif /* FAL_CAMERA_H */
