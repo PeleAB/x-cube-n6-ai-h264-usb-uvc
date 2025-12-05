@@ -50,6 +50,7 @@ C_SOURCES += Src/svc/buffer_queue.c
 C_SOURCES += Src/svc/app_display.c
 C_SOURCES += Src/app/app_pipeline.c
 C_SOURCES += Src/svc/app_stats.c
+C_SOURCES += Src/svc/nn_service.c
 C_SOURCES += Src/svc/utils.c
 C_SOURCES += Src/svc/draw.c
 C_SOURCES += Src/svc/stm32_lcd_ex.c

@@ -30,6 +30,7 @@
 #include "svc/app_display.h"
 #include "svc/app_stats.h"
 #include "svc/buffer_queue.h"
+#include "svc/nn_service.h"
 #include "isp_api.h"
 #include "network.h"
 #include "stm32n6xx_hal.h"
@@ -47,8 +48,9 @@
 #define VENC_MAX_HEIGHT 720
 
 /* Model Related Info */
-#define NN_BUFFER_OUT_SIZE LL_ATON_DEFAULT_OUT_1_SIZE_BYTES
-#define NN_BUFFER_OUT_SIZE_ALIGN ALIGN_VALUE(NN_BUFFER_OUT_SIZE, 32)
+#define NN_INPUT_BUFFER_SIZE (NN_WIDTH * NN_HEIGHT * NN_BPP)
+#define NN_OUTPUT_BUFFER_SIZE LL_ATON_DEFAULT_OUT_1_SIZE_BYTES
+#define NN_OUTPUT_BUFFER_SIZE_ALIGN ALIGN_VALUE(NN_OUTPUT_BUFFER_SIZE, 32)
 
 /* capture buffers */
 static uint8_t capture_buffer[CAPTURE_BUFFER_NB][VENC_MAX_WIDTH * VENC_MAX_HEIGHT * CAPTURE_BPP] ALIGN_32 IN_PSRAM;
@@ -57,10 +59,12 @@ static int capture_buffer_capt_idx = 0;
 
 /* model */
 LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(Default);
-static uint8_t nn_input_buffers[2][NN_WIDTH * NN_HEIGHT * NN_BPP] ALIGN_32 IN_PSRAM;
+static uint8_t nn_input_buffers[2][NN_INPUT_BUFFER_SIZE] ALIGN_32 IN_PSRAM;
 static bqueue_t nn_input_queue;
-static uint8_t nn_output_buffers[2][NN_BUFFER_OUT_SIZE_ALIGN] ALIGN_32;
+static uint8_t nn_output_buffers[2][NN_OUTPUT_BUFFER_SIZE_ALIGN] ALIGN_32;
 static bqueue_t nn_output_queue;
+static nn_service_handle_t nn_model_handle = NN_SERVICE_INVALID_HANDLE;
+static const nn_service_model_t *nn_model;
 
 /* tasks */
 static StaticTask_t nn_thread;
@@ -110,8 +114,6 @@ static void app_main_pipe_vsync_event(void)
 
 static void nn_thread_fct(void *arg)
 {
-  const LL_Buffer_InfoTypeDef *nn_out_info = LL_ATON_Output_Buffers_Info_Default();
-  const LL_Buffer_InfoTypeDef *nn_in_info = LL_ATON_Input_Buffers_Info_Default();
   stat_info_t *stats = app_stats_state();
   uint32_t nn_period_ms;
   uint32_t nn_period[2];
@@ -124,12 +126,9 @@ static void nn_thread_fct(void *arg)
 
   (void) nn_period_ms;
 
-  LL_ATON_RT_RuntimeInit();
-  LL_ATON_RT_Init_Network(&NN_Instance_Default);
-
-  nn_in_len = LL_Buffer_len(&nn_in_info[0]);
-  nn_out_len = LL_Buffer_len(&nn_out_info[0]);
-  assert(nn_out_len == NN_BUFFER_OUT_SIZE);
+  assert(nn_model);
+  nn_in_len = nn_model->user_input_size;
+  nn_out_len = nn_model->user_output_size;
 
   nn_period[1] = HAL_GetTick();
 
@@ -152,12 +151,10 @@ static void nn_thread_fct(void *arg)
 
     total_ts = HAL_GetTick();
     ts = HAL_GetTick();
-    ret = LL_ATON_Set_User_Input_Buffer_Default(0, capture_buffer_local, nn_in_len);
-    assert(ret == LL_ATON_User_IO_NOERROR);
     FAL_CacheInvalidate(output_buffer, nn_out_len);
-    ret = LL_ATON_Set_User_Output_Buffer_Default(0, output_buffer, nn_out_len);
-    assert(ret == LL_ATON_User_IO_NOERROR);
-    Run_Inference(&NN_Instance_Default);
+    ret = nn_service_prepare_io(capture_buffer_local, nn_in_len, output_buffer, nn_out_len);
+    assert(ret == NN_SERVICE_OK);
+    Run_Inference(nn_model->instance);
     time_stat_update(&stats->nn_inference_time, HAL_GetTick() - ts);
 
     bqueue_put_free(&nn_input_queue);
@@ -172,13 +169,15 @@ static void dp_thread_fct(void *arg)
   od_yolov2_pp_static_param_t pp_params;
   od_pp_out_t pp_output;
   stat_info_t *stats = app_stats_state();
+  const nn_service_model_t *model = nn_model;
   uint32_t total_ts;
   void *pp_input;
   int is_dp_done;
   uint32_t ts;
   int ret;
 
-  app_postprocess_init(&pp_params, &NN_Instance_Default);
+  assert(model);
+  app_postprocess_init(&pp_params, model->instance);
   while (1)
   {
     uint8_t *output_buffer;
@@ -218,7 +217,24 @@ static void isp_thread_fct(void *arg)
 
 void app_pipeline_init(void)
 {
+  nn_service_model_cfg_t nn_cfg = {
+    .name = "default",
+    .instance = &NN_Instance_Default,
+    .postprocess_type = POSTPROCESS_TYPE,
+  };
   int ret;
+
+  ret = nn_service_init();
+  assert(ret == NN_SERVICE_OK);
+  ret = nn_service_register(&nn_cfg, &nn_model_handle);
+  assert(ret == NN_SERVICE_OK);
+  ret = nn_service_select(nn_model_handle);
+  assert(ret == NN_SERVICE_OK);
+  nn_model = nn_service_active();
+  assert(nn_model);
+  assert(nn_model->user_input_size <= sizeof(nn_input_buffers[0]));
+  assert(nn_model->user_output_size <= sizeof(nn_output_buffers[0]));
+  assert(nn_model->postprocess_type == POSTPROCESS_TYPE);
 
   ret = bqueue_init(&nn_input_queue, 2, (uint8_t *[2]){nn_input_buffers[0], nn_input_buffers[1]});
   assert(ret == 0);

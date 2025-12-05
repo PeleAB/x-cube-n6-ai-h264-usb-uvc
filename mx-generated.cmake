@@ -38,6 +38,7 @@ set(APP_SOURCES
     ${PROJECT_ROOT}/Src/bsp/platform.c
     ${PROJECT_ROOT}/Src/bsp/freertos_platform.c
     ${PROJECT_ROOT}/Src/svc/app_stats.c
+    ${PROJECT_ROOT}/Src/svc/nn_service.c
     ${PROJECT_ROOT}/Src/svc/utils.c
     ${PROJECT_ROOT}/Src/svc/draw.c
     ${PROJECT_ROOT}/Src/bsp/stm32n6xx_it.c
