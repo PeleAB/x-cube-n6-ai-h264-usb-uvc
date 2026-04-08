@@ -21,6 +21,7 @@
 #include <assert.h>
 
 #include "app/app_config.h"
+#include "app/app_pipeline.h"
 #include "bsp/freertos_platform.h"
 #include "bsp/fuse_programming.h"
 #include "npu_cache.h"
@@ -83,8 +84,15 @@ void BSP_PlatformInit(void)
 
   NOR_Init.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
   NOR_Init.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
-  BSP_XSPI_NOR_Init(0, &NOR_Init);
+
+  /* Original XSPI2 NOR init — Init fails but sets up GPIO/clocks,
+   * then EnableMMP enters SPI/STR MMP (context defaults to all zeros). */
+  (void)BSP_XSPI_NOR_Init(0, &NOR_Init);
   BSP_XSPI_NOR_EnableMemoryMappedMode(0);
+
+  /* Read params and embeddings from MMP address space.
+   * XSPI2 MMP maps NOR flash at 0x70000000; CPU can read directly. */
+  app_flash_early_init();
 
   /* Set all required IPs as secure privileged */
   Security_Config();

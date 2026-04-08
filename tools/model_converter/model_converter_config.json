@@ -1,0 +1,28 @@
+{
+  "tools": {
+    "stedgeai": "C:/ST/STEdgeAI/4.0/Utilities/windows/stedgeai.exe",
+    "objcopy": "arm-none-eabi-objcopy",
+    "programmer": "C:\\ST\\STM32CubeCLT_1.18.0\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI.EXE",
+    "external_loader": "C:\\Program Files\\STMicroelectronics\\STM32Cube\\STM32CubeProgrammer\\bin\\ExternalLoader\\MX66UW1G45G_STM32N6570-DK.stldr",
+    "stedgeai_docker": ""
+  },
+  "use_docker": false,
+  "output_dir": "C:\\developments\\x-cube-n6-ai-h264-usb-uvc\\tools\\model_converter\\output",
+  "models": [
+    {
+      "name": "centerface_OE_3_2_0",
+      "file": "C:/developments/STM32N6-FaceRecognition/converted_models/centerface_OE_3_2_0.onnx",
+      "address": "0x71000000",
+      "input_type": "float32",
+      "options": "-O0 --all-buffers-info --cache-maintenance --Oalt-sched --enable-virtual-mem-pools --Omax-ca-pipe 4 --Ocache-opt --Os --enable-epoch-controller"
+    },
+    {
+      "name": "mobilefacenet_int8_faces_OE_3_2_0",
+      "file": "C:/developments/STM32N6-FaceRecognition/converted_models/mobilefacenet_int8_faces_OE_3_2_0.onnx",
+      "address": "0x72000000",
+      "input_type": "float32",
+      "options": "-O0 --all-buffers-info --cache-maintenance --Oalt-sched --enable-virtual-mem-pools --Omax-ca-pipe 4 --Ocache-opt --Os --enable-epoch-controller"
+    }
+  ],
+  "flash_files": []
+}

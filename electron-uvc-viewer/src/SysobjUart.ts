@@ -11,14 +11,28 @@ export const SysobjUartMsgType = {
 } as const;
 
 export const SysobjUartManageSubtype = {
-    SET_LED: 0x01,
+    SET_LED:   0x01,
     TELEMETRY: 0x02,
+    GET_STATE: 0x03,
 } as const;
 
 export const SysobjUartConfigSubtype = {
-    PARAM_READ: 0x01,
-    PARAM_WRITE: 0x02,
+    PARAM_READ:          0x01,
+    PARAM_WRITE:         0x02,
+    ENTER_CONFIG:        0x03,
+    EXIT_CONFIG:         0x04,
+    MODEL_SELECT:        0x05,
+    ENROLL:              0x06,
+    COMMIT_ENROLL:       0x07,
+    CLEAR_EMBEDDINGS:    0x08,
 } as const;
+
+export const SysobjUartState = {
+    BOOT:   0,
+    ON:     1,
+    CONFIG: 2,
+} as const;
+export type SysobjUartStateValue = typeof SysobjUartState[keyof typeof SysobjUartState];
 
 export interface SysobjUartMsg {
     src_id: number;
@@ -265,6 +279,53 @@ export function createParamWriteMsg(paramId: number, value: number): SysobjUartM
     };
 }
 
+export function createEnterConfigMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.ENTER_CONFIG,
+    };
+}
+
+export function createExitConfigMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.EXIT_CONFIG,
+    };
+}
+
+export function createGetStateMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.MANAGE,
+        msg_subtype: SysobjUartManageSubtype.GET_STATE,
+    };
+}
+
+export interface StateResponse {
+    status: number;
+    state: number;  // SysobjUartState value
+}
+
+/**
+ * Parse a CONFIG/ENTER_CONFIG, EXIT_CONFIG, or GET_STATE response (2 bytes):
+ * [0]=status (0=OK, 0x10=wrong state), [1]=current state
+ */
+export function parseStateResponse(data: Uint8Array): StateResponse | null {
+    if (!data || data.length < 2) return null;
+    return { status: data[0], state: data[1] };
+}
+
 export interface ParamReadResponse {
     status: number;   // params_status_t (0 = OK)
     paramId: number;
@@ -323,4 +384,116 @@ export function getMsgSubtypeName(type: number, subtype: number): string {
         }
     }
     return `0x${subtype.toString(16).toUpperCase()}`;
+}
+
+export function getStateName(state: number): string {
+    for (const [name, value] of Object.entries(SysobjUartState)) {
+        if (value === state) return name;
+    }
+    return 'UNKNOWN';
+}
+
+// ---------------------------------------------------------------------------
+// MODEL_SELECT message helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a MODEL_SELECT request.
+ * Payload: model_id[0..1] LE
+ */
+export function createModelSelectMsg(modelId: number): SysobjUartMsg {
+    const data = new Uint8Array(2);
+    data[0] = modelId & 0xff;
+    data[1] = (modelId >> 8) & 0xff;
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.MODEL_SELECT,
+        data,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Face recognition enrollment message helpers
+// ---------------------------------------------------------------------------
+
+/** Request enrollment of the next detected face (no payload). */
+export function createEnrollMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.ENROLL,
+    };
+}
+
+/** Request commit of enrolled samples to NOR flash (no payload). */
+export function createCommitEnrollMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.COMMIT_ENROLL,
+    };
+}
+
+/** Request clearing of all enrolled embeddings (no payload). */
+export function createClearEmbeddingsMsg(): SysobjUartMsg {
+    return {
+        src_id: 0x01,
+        dst_id: 0x02,
+        is_ack: 0,
+        need_ack: 0,
+        msg_type: SysobjUartMsgType.CONFIG,
+        msg_subtype: SysobjUartConfigSubtype.CLEAR_EMBEDDINGS,
+    };
+}
+
+export interface EnrollResponse {
+    status: number;  // 0 = OK, 0x10 = wrong state
+}
+
+/** Parse a CONFIG/ENROLL response payload (1 byte): [0]=status */
+export function parseEnrollResponse(data: Uint8Array): EnrollResponse | null {
+    if (!data || data.length < 1) return null;
+    return { status: data[0] };
+}
+
+export interface CommitEnrollResponse {
+    status: number;    // 0 = OK, 0x10 = wrong state
+    sampleCount: number;
+}
+
+/**
+ * Parse a CONFIG/COMMIT_ENROLL response payload (5 bytes):
+ * [0]=status, [1..4]=sample_count LE uint32
+ */
+export function parseCommitEnrollResponse(data: Uint8Array): CommitEnrollResponse | null {
+    if (!data || data.length < 5) return null;
+    const status = data[0];
+    const sampleCount = (data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24)) >>> 0;
+    return { status, sampleCount };
+}
+
+export interface ModelSelectResponse {
+    status: number;   // 0 = OK, 0x10 = wrong state
+    modelId: number;
+}
+
+/**
+ * Parse a CONFIG/MODEL_SELECT response payload (3 bytes):
+ * [0]=status, [1..2]=model_id LE
+ */
+export function parseModelSelectResponse(data: Uint8Array): ModelSelectResponse | null {
+    if (!data || data.length < 3) return null;
+    const status = data[0];
+    const modelId = data[1] | (data[2] << 8);
+    return { status, modelId };
 }

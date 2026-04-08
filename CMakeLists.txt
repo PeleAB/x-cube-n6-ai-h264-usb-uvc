@@ -37,6 +37,15 @@ add_subdirectory(../n6-platform n6-platform-build)
 include("mx-generated.cmake")
 
 # ---------------------------------------------------------------------------
+# NN model selection — reads NN_MODEL cache variable (default: "network").
+# For a custom model, configure with: cmake --preset Debug -DNN_MODEL=mymodel
+# The model's .c/.h files must exist in Model/<NN_MODEL>/.
+# ---------------------------------------------------------------------------
+include(cmake/nn_model.cmake)
+setup_nn_model(${CMAKE_PROJECT_NAME})
+setup_face_models(${CMAKE_PROJECT_NAME})
+
+# ---------------------------------------------------------------------------
 # Suppress compilation of files now provided by n6platform.
 # mx-generated.cmake lists these in APP_SOURCES (which is already consumed
 # by add_executable above), so we mark them header-only to avoid duplicate
@@ -56,6 +65,22 @@ set_source_files_properties(
     ${PROJECT_ROOT}/Src/svc/app_stats.c
     ${PROJECT_ROOT}/Src/svc/utils.c
     PROPERTIES HEADER_FILE_ONLY TRUE
+)
+
+# ---------------------------------------------------------------------------
+# Face recognition pipeline — new source files
+# ---------------------------------------------------------------------------
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    # UART state machine and all sysobj_uart_handle_*() overrides
+    ${PROJECT_ROOT}/Src/app/app_uart_handlers.c
+    # Two-model sequential face detection + recognition pipeline
+    ${PROJECT_ROOT}/Src/svc/face_pipeline.c
+    # Enrolled embedding bank with NOR flash persistence
+    ${PROJECT_ROOT}/Src/svc/embedding_store.c
+    # Face crop, alignment, and format conversion utilities
+    ${PROJECT_ROOT}/Src/app/crop_img.c
+    # CenterFace-specific postprocessing (4 output tensors: scale/lms/heatmap/offset)
+    ${LIB_ROOT}/lib_vision_models_pp/lib_vision_models_pp/Src/centerface_pp.c
 )
 
 # Link the platform library

@@ -19,6 +19,7 @@
 #include "app/app_pipeline.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -28,12 +29,23 @@
 #include "app_postprocess.h"
 #include "sysobj_cache.h"
 #include "sysobj_camera.h"
+#include "stm32n6570_discovery_xspi.h"
 #include "svc/app_display.h"
 #include "svc/app_stats.h"
 #include "svc/buffer_queue.h"
 #include "svc/nn_service.h"
+#include "svc/face_pipeline.h"
+#include "app/face_result.h"
+#include "svc/embedding_store.h"
 #include "isp_api.h"
+/* Model header: selected at build time via NN_MODEL_HEADER compile definition.
+ * cmake/nn_model.cmake sets this to "network.h" (legacy) or "<name>.h" for
+ * custom models deployed to Model/<name>/. */
+#ifdef NN_MODEL_HEADER
+#include NN_MODEL_HEADER
+#else
 #include "network.h"
+#endif
 #include "stm32n6xx_hal.h"
 #include "utils.h"
 #include "FreeRTOS.h"
@@ -58,8 +70,18 @@ static uint8_t capture_buffer[CAPTURE_BUFFER_NB][VENC_MAX_WIDTH * VENC_MAX_HEIGH
 static int capture_buffer_disp_idx = 1;
 static int capture_buffer_capt_idx = 0;
 
+/* Model instance declaration — driven by NN_MODEL_INSTANCE compile definition.
+ * Double-macro indirection ensures the token expands before ## concatenation. */
+#ifndef NN_MODEL_INSTANCE
+#define NN_MODEL_INSTANCE Default
+#endif
+#define _NN_DECL_EXPAND(x)   LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(x)
+#define _NN_INST_PASTE(x)    NN_Instance_##x
+#define _NN_INST_EXPAND(x)   _NN_INST_PASTE(x)
+#define _NN_STRINGIFY(x)     #x
+#define _NN_STR(x)           _NN_STRINGIFY(x)
 /* model */
-LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(Default);
+_NN_DECL_EXPAND(NN_MODEL_INSTANCE);
 static uint8_t nn_input_buffers[2][NN_INPUT_BUFFER_SIZE] ALIGN_32 IN_PSRAM;
 static bqueue_t nn_input_queue;
 static uint8_t nn_output_buffers[2][NN_OUTPUT_BUFFER_SIZE_ALIGN] ALIGN_32;
@@ -85,14 +107,26 @@ static StaticSemaphore_t isp_sem_buffer;
 static SemaphoreHandle_t s_inference_mutex;
 static StaticSemaphore_t s_inference_mutex_buf;
 
+/* ---------------------------------------------------------------------------
+ * SRAM-cached active model — avoids XSPI flash reads at runtime.
+ * Written by UART param handler (via app_pipeline_set_active_model),
+ * read by nn_thread / dp_thread every frame.
+ * ------------------------------------------------------------------------- */
+static volatile uint32_t s_active_model_cached;
+
 static void params_pre_write_hook(void)
 {
-  /* Block until any running inference releases the mutex */
+  /* Block until any running inference releases the mutex, then leave MMP
+   * so BSP_XSPI_NOR_Erase/Write can issue indirect commands.
+   * After DisableMemoryMappedMode the BSP context is {INDIRECT, OPI, DTR}
+   * which matches the flash chip's current mode — BSP commands should work. */
   xSemaphoreTake(s_inference_mutex, portMAX_DELAY);
+  BSP_XSPI_NOR_DisableMemoryMappedMode(PARAM_XSPI_INST);
 }
 
 static void params_post_write_hook(void)
 {
+  BSP_XSPI_NOR_EnableMemoryMappedMode(PARAM_XSPI_INST);
   xSemaphoreGive(s_inference_mutex);
 }
 
@@ -141,6 +175,8 @@ static void nn_thread_fct(void *arg)
   uint32_t nn_out_len;
   uint32_t nn_in_len;
   uint32_t total_ts;
+  uint32_t active_mode;
+  uint32_t prev_mode;
   uint32_t ts;
   int ret;
 
@@ -152,6 +188,10 @@ static void nn_thread_fct(void *arg)
 
   nn_period[1] = HAL_GetTick();
 
+  /* Boot in person-detection mode: PIPE2 was configured for NN_WIDTH×NN_HEIGHT
+   * in CAM_Init().  prev_mode tracks the last active mode so we can detect
+   * transitions and reconfigure PIPE2 without stopping inference unnecessarily. */
+  prev_mode = s_active_model_cached;
   nn_pipe_dst = bqueue_get_free(&nn_input_queue, 0);
   assert(nn_pipe_dst);
   CAM_NNPipe_Start(nn_pipe_dst, CMW_MODE_CONTINUOUS);
@@ -171,12 +211,40 @@ static void nn_thread_fct(void *arg)
 
     total_ts = HAL_GetTick();
     ts = HAL_GetTick();
-    SYSOBJ_CacheInvalidate(output_buffer, nn_out_len);
-    ret = nn_service_prepare_io(capture_buffer_local, nn_in_len, output_buffer, nn_out_len);
-    assert(ret == NN_SERVICE_OK);
-    /* Hold inference mutex so params write knows when the NPU is safe to pause */
+
+    active_mode = s_active_model_cached;
+
+    /* Hold inference mutex so params write knows when the NPU is safe to pause.
+     * Also used here to gate PIPE2 reconfiguration — the pipe is stopped while
+     * holding the mutex, so no new frames arrive during reconfigure. */
     xSemaphoreTake(s_inference_mutex, portMAX_DELAY);
-    Run_Inference(nn_model->instance);
+
+    /* Detect mode transition and reconfigure PIPE2 output resolution */
+    if (active_mode != prev_mode) {
+      nn_pipe_dst = bqueue_get_free(&nn_input_queue, 0);
+      if (!nn_pipe_dst)
+        nn_pipe_dst = capture_buffer_local; /* fallback: reuse current buffer */
+      if (active_mode == PIPELINE_MODE_FACE_RECOGNITION) {
+        CAM_NNPipe_Reconfigure(FR_DET_WIDTH, FR_DET_HEIGHT,
+                               nn_pipe_dst, CMW_MODE_CONTINUOUS);
+      } else {
+        CAM_NNPipe_Reconfigure(NN_WIDTH, NN_HEIGHT,
+                               nn_pipe_dst, CMW_MODE_CONTINUOUS);
+      }
+      prev_mode = active_mode;
+    }
+
+    if (active_mode == PIPELINE_MODE_FACE_RECOGNITION) {
+      face_pipeline_run(capture_buffer_local,
+                        capture_buffer[capture_buffer_disp_idx],
+                        VENC_MAX_WIDTH, VENC_MAX_HEIGHT,
+                        (face_pipeline_result_t *)output_buffer);
+    } else {
+      SYSOBJ_CacheInvalidate(output_buffer, nn_out_len);
+      ret = nn_service_prepare_io(capture_buffer_local, nn_in_len, output_buffer, nn_out_len);
+      assert(ret == NN_SERVICE_OK);
+      Run_Inference(nn_model->instance);
+    }
     xSemaphoreGive(s_inference_mutex);
     time_stat_update(&stats->nn_inference_time, HAL_GetTick() - ts);
 
@@ -194,6 +262,7 @@ static void dp_thread_fct(void *arg)
   stat_info_t *stats = app_stats_state();
   const nn_service_model_t *model = nn_model;
   uint32_t total_ts;
+  uint32_t active_mode;
   void *pp_input;
   int is_dp_done;
   uint32_t ts;
@@ -209,15 +278,24 @@ static void dp_thread_fct(void *arg)
     assert(output_buffer);
     total_ts = HAL_GetTick();
 
-    ts = HAL_GetTick();
-    pp_input = (void *) output_buffer;
-    pp_output.pOutBuff = NULL;
-    ret = app_postprocess_run((void * []){pp_input}, 1, &pp_output, &pp_params);
-    assert(ret == AI_OD_POSTPROCESS_ERROR_NO);
-    time_stat_update(&stats->nn_pp_time, HAL_GetTick() - ts);
-    app_stats_cpuload_update();
+    active_mode = s_active_model_cached;
 
-    is_dp_done = app_display_render(capture_buffer[capture_buffer_disp_idx], &pp_output);
+    ts = HAL_GetTick();
+    if (active_mode == PIPELINE_MODE_FACE_RECOGNITION) {
+      /* face_pipeline_run() already decoded results into output_buffer */
+      time_stat_update(&stats->nn_pp_time, HAL_GetTick() - ts);
+      app_stats_cpuload_update();
+      is_dp_done = app_display_render_faces(capture_buffer[capture_buffer_disp_idx],
+                                            (face_pipeline_result_t *)output_buffer);
+    } else {
+      pp_input = (void *) output_buffer;
+      pp_output.pOutBuff = NULL;
+      ret = app_postprocess_run((void * []){pp_input}, 1, &pp_output, &pp_params);
+      assert(ret == AI_OD_POSTPROCESS_ERROR_NO);
+      time_stat_update(&stats->nn_pp_time, HAL_GetTick() - ts);
+      app_stats_cpuload_update();
+      is_dp_done = app_display_render(capture_buffer[capture_buffer_disp_idx], &pp_output);
+    }
 
     if (is_dp_done)
       time_stat_update(&stats->disp_total_time, HAL_GetTick() - total_ts);
@@ -247,26 +325,23 @@ static const param_descriptor_t s_param_table[PARAM_ID_COUNT] = {
   { PARAM_CONF_THRESHOLD, PARAM_TYPE_U32,  50ULL,   0ULL,  100ULL },
   { PARAM_BRIGHTNESS,     PARAM_TYPE_U32,  80ULL,   0ULL,  100ULL },
   { PARAM_TARGET_FPS,     PARAM_TYPE_U32,  30ULL,   1ULL,   60ULL },
+  { PARAM_ACTIVE_MODEL,   PARAM_TYPE_U32,   0ULL,   0ULL,   15ULL },
 };
 
-void app_pipeline_init(void)
+/* ---------------------------------------------------------------------------
+ * Early flash init — called from BSP_PlatformInit while XSPI2 is in indirect
+ * mode (between BSP_XSPI_NOR_Init and BSP_XSPI_NOR_EnableMemoryMappedMode).
+ * This is the ONLY reliable window for BSP_XSPI_NOR_Read operations.
+ * ------------------------------------------------------------------------- */
+void app_flash_early_init(void)
 {
-  nn_service_model_cfg_t nn_cfg = {
-    .name = "default",
-    .instance = &NN_Instance_Default,
-    .postprocess_type = POSTPROCESS_TYPE,
-  };
-  int ret;
   params_status_t pret;
 
-  /* Create the inference guard mutex (must exist before sysobj_params_init) */
+  /* Create the inference guard mutex early — the pre/post write hooks
+   * reference it, and sysobj_params_init stores the hook pointers. */
   s_inference_mutex = xSemaphoreCreateMutexStatic(&s_inference_mutex_buf);
-  assert(s_inference_mutex != NULL);
+  configASSERT(s_inference_mutex != NULL);
 
-  /* Initialise persistent parameter store (must be after BSP_PlatformInit).
-   * mmp_base_addr = XSPI2_BASE: reads via memcpy from the AXI window so they
-   * are safe while the NPU accesses model weights through the same window.
-   * pre/post_write_hook: pause/resume inference around erase+write operations. */
   params_cfg_t pcfg = {
     .flash_base_addr  = PARAM_FLASH_BASE,
     .xspi_instance    = PARAM_XSPI_INST,
@@ -277,9 +352,36 @@ void app_pipeline_init(void)
     .table_count      = PARAM_ID_COUNT,
   };
   pret = sysobj_params_init(&pcfg);
-  /* PARAMS_ERR_ALL_CORRUPT is recoverable — flash blank on first boot */
-  assert(pret == PARAMS_OK || pret == PARAMS_ERR_ALL_CORRUPT);
+  /* PARAMS_ERR_ALL_CORRUPT is recoverable — flash is blank on first boot. */
+  configASSERT(pret == PARAMS_OK || pret == PARAMS_ERR_ALL_CORRUPT);
   (void)pret;
+
+  /* Seed the active-model cache from flash (indirect mode still active). */
+  {
+    uint64_t v = 0;
+    bool dummy;
+    sysobj_params_read(PARAM_ACTIVE_MODEL, &v, &dummy);
+    s_active_model_cached = (uint32_t)v;
+  }
+
+  /* Load the persisted face embedding (if any) from NOR flash. */
+  embedding_store_init();
+}
+
+void app_pipeline_init(void)
+{
+  nn_service_model_cfg_t nn_cfg = {
+    .name = _NN_STR(NN_MODEL_INSTANCE),
+    .instance = &_NN_INST_EXPAND(NN_MODEL_INSTANCE),
+    .postprocess_type = POSTPROCESS_TYPE,
+  };
+  int ret;
+
+  /* s_inference_mutex and params/embedding stores were already initialised by
+   * app_flash_early_init() (called from BSP_PlatformInit while XSPI2 was in
+   * indirect mode).  XSPI2 is now in MMP — model weights are accessible. */
+
+  face_pipeline_init();
 
   ret = nn_service_init();
   assert(ret == NN_SERVICE_OK);
@@ -291,7 +393,7 @@ void app_pipeline_init(void)
   assert(nn_model);
   assert(nn_model->user_input_size <= sizeof(nn_input_buffers[0]));
   assert(nn_model->user_output_size <= sizeof(nn_output_buffers[0]));
-  assert(nn_model->postprocess_type == POSTPROCESS_TYPE);
+  assert(nn_model->postprocess_type == (uint32_t)POSTPROCESS_TYPE);
 
   ret = bqueue_init(&nn_input_queue, 2, (uint8_t *[2]){nn_input_buffers[0], nn_input_buffers[1]});
   assert(ret == 0);
@@ -338,6 +440,11 @@ int CMW_CAMERA_PIPE_VsyncEventCallback(uint32_t pipe)
     app_main_pipe_vsync_event();
 
   return HAL_OK;
+}
+
+void app_pipeline_set_active_model(uint32_t mode)
+{
+  s_active_model_cached = mode;
 }
 
 

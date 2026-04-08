@@ -1,0 +1,15 @@
+# docker-compose.yml — build helper for the stm32n6-converter image.
+#
+# Usage:
+#   docker compose build          # build / rebuild the image
+#   docker compose build --no-cache
+#
+# At conversion time the UI runs individual "docker run" commands, not
+# docker-compose services.  This file is only used for building.
+
+services:
+  converter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stm32n6-converter:latest

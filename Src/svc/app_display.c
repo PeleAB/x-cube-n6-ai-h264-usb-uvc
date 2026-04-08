@@ -66,6 +66,11 @@ static int force_intra;
 static uint8_t venc_out_buffer[VENC_OUT_BUFFER_SIZE] ALIGN_32 UNCACHED;
 static uint8_t uvc_in_buffers[VENC_OUT_BUFFER_SIZE] ALIGN_32;
 
+/* Shared across both render paths: ensures the encoder gets a forced intra
+ * frame when UVC comes back from inactive, regardless of which render function
+ * was last active.  A per-function static would go stale on mode switch. */
+static int uvc_is_active_prev;
+
 static int clamp_point(int *x, int *y) {
   int xi = *x;
   int yi = *y;
@@ -295,6 +300,7 @@ void app_display_init(void) {
   buffer_flying = 0;
   force_intra = 0;
   uvc_is_active = 0;
+  uvc_is_active_prev = 0;
 }
 
 int app_display_setup(const ENC_Conf_t *enc_conf,
@@ -313,8 +319,84 @@ int app_display_setup(const ENC_Conf_t *enc_conf,
   return ret;
 }
 
+static void build_display_faces(uint8_t *p_buffer,
+                                const face_pipeline_result_t *fr)
+{
+  static const uint32_t color_unknown  = 0xFFFF0000u; /* red   */
+  static const uint32_t color_matched  = 0xFF00FF00u; /* green */
+  static const uint32_t color_enrolled = 0xFFFFFF00u; /* yellow */
+  int line_nb = VENC_HEIGHT / INF_INFO_FONT.height - 4;
+  stat_info_t si_copy;
+
+  stat_info_copy(&si_copy);
+
+  for (uint8_t i = 0; i < fr->num_faces; i++) {
+    const face_entry_t *fe = &fr->faces[i];
+    uint32_t color;
+
+    if (fe->recognized == 2)
+      color = color_enrolled;
+    else if (fe->recognized == 1)
+      color = color_matched;
+    else
+      color = color_unknown;
+
+    DRAW_RectArgbHw(p_buffer, VENC_WIDTH, VENC_HEIGHT,
+                    fe->box_x, fe->box_y, fe->box_w, fe->box_h, color);
+
+    if (fe->recognized == 2) {
+      DRAW_PrintfArgbHw(&CONF_LEVEL_FONT, p_buffer, VENC_WIDTH, VENC_HEIGHT,
+                        fe->box_x, fe->box_y, "Enrolled!");
+    } else {
+      DRAW_PrintfArgbHw(&CONF_LEVEL_FONT, p_buffer, VENC_WIDTH, VENC_HEIGHT,
+                        fe->box_x, fe->box_y, "%4.1f %%", fe->similarity * 100.0f);
+    }
+
+    /* Draw 5 facial keypoints as 3×3 squares */
+    for (int k = 0; k < FACE_KP_COUNT; k++) {
+      int kx = (int)fe->kp_x[k] - 1;
+      int ky = (int)fe->kp_y[k] - 1;
+      if (kx < 0) kx = 0;
+      if (ky < 0) ky = 0;
+      DRAW_RectArgbHw(p_buffer, VENC_WIDTH, VENC_HEIGHT, kx, ky, 3, 3, color);
+    }
+  }
+
+  line_nb = build_display_inference_info(p_buffer, si_copy.nn_inference_time.last, line_nb);
+  build_display_cpu_load(p_buffer, line_nb);
+  build_display_stat_info(p_buffer, &si_copy);
+}
+
+int app_display_render_faces(uint8_t *frame_buffer, const face_pipeline_result_t *fr)
+{
+  stat_info_t *stats = app_stats_state();
+  uint32_t ts;
+  int len;
+
+  if (!uvc_is_active) {
+    uvc_is_active_prev = uvc_is_active;
+    return 0;
+  }
+
+  ts = HAL_GetTick();
+  build_display_faces(frame_buffer, fr);
+  stats_detect_update(fr->num_faces);
+  time_stat_update(&stats->disp_display_time, HAL_GetTick() - ts);
+
+  ts = HAL_GetTick();
+  len = (int)encode_display(!uvc_is_active_prev || force_intra, frame_buffer);
+  time_stat_update(&stats->disp_enc_time, HAL_GetTick() - ts);
+
+  if (len > 0)
+    send_display(len);
+
+  force_intra = 0;
+  uvc_is_active_prev = uvc_is_active;
+
+  return uvc_is_active;
+}
+
 int app_display_render(uint8_t *frame_buffer, od_pp_out_t *pp_out) {
-  static int uvc_is_active_prev = 0;
   stat_info_t *stats = app_stats_state();
   uint32_t ts;
   int len;

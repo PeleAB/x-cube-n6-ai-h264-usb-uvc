@@ -5,8 +5,18 @@ import {
   createRequestTelemetryMsg,
   createParamReadMsg,
   createParamWriteMsg,
+  createEnterConfigMsg,
+  createExitConfigMsg,
+  createGetStateMsg,
+  createModelSelectMsg,
+  createEnrollMsg,
+  createCommitEnrollMsg,
+  createClearEmbeddingsMsg,
   parseParamReadResponse,
   parseParamWriteResponse,
+  parseStateResponse,
+  parseModelSelectResponse,
+  parseCommitEnrollResponse,
   generatePacket,
   parsePacket,
   extractPackets,
@@ -15,6 +25,7 @@ import {
   SysobjUartMsgType,
   SysobjUartManageSubtype,
   SysobjUartConfigSubtype,
+  SysobjUartState,
 } from './SysobjUart';
 
 // ---------------------------------------------------------------------------
@@ -24,9 +35,21 @@ const PARAM_DEFS = [
   { id: 0, name: 'Conf. Threshold', unit: '%',   min: 0,  max: 100, defaultVal: 50  },
   { id: 1, name: 'Brightness',      unit: '%',   min: 0,  max: 100, defaultVal: 80  },
   { id: 2, name: 'Target FPS',      unit: 'fps', min: 1,  max: 60,  defaultVal: 30  },
+  { id: 3, name: 'Active Model',    unit: '',     min: 0,  max: 15,  defaultVal: 0   },
 ] as const;
 
 type ParamId = typeof PARAM_DEFS[number]['id'];
+
+// ---------------------------------------------------------------------------
+// Model registry — keeps the UI in sync with deployed models.
+// Add an entry here for each model deployed to Model/<name>/ and flashed.
+// ---------------------------------------------------------------------------
+const MODEL_DEFS = [
+  { id: 0, name: 'network',       label: 'Default (YOLO v2)' },
+  { id: 1, name: 'face_recog',    label: 'Face Recognition' },
+] as const;
+
+type ModelId = typeof MODEL_DEFS[number]['id'];
 
 interface ParamState {
   value: number;
@@ -64,6 +87,15 @@ function App() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const rxBufferRef = useRef<number[]>([]);
   const [telemetry, setTelemetry] = useState({ cpuLoad: 0, inferenceTime: 0, nbDetect: 0 });
+
+  // MCU state machine (-1 = unknown before first message)
+  const [mcuState, setMcuState] = useState<number>(-1);
+
+  // Active model index (mirrors PARAM_ACTIVE_MODEL on the MCU)
+  const [activeModelId, setActiveModelId] = useState<ModelId>(0);
+
+  // Enrolled sample count (updated from COMMIT_ENROLL response)
+  const [enrolledCount, setEnrolledCount] = useState<number>(0);
 
   // Config param state — keyed by param ID
   const [params, setParams] = useState<Record<ParamId, ParamState>>(
@@ -163,10 +195,15 @@ function App() {
     if (isConnected) {
       await window.electronAPI.serial.disconnect();
       setIsConnected(false);
+      setMcuState(-1);
     } else if (selectedPort) {
       const res = await window.electronAPI.serial.connect(selectedPort, 115200);
       if (res.success) {
         setIsConnected(true);
+        setMcuState(-1);
+        // Query current MCU state immediately after connecting
+        const packet = generatePacket(createGetStateMsg());
+        await window.electronAPI.serial.send(packet);
       } else {
         alert('Failed to connect: ' + res.error);
       }
@@ -218,6 +255,37 @@ function App() {
     }
   };
 
+  const toggleConfigMode = async () => {
+    if (!isConnected) return;
+    const msg = mcuState === SysobjUartState.CONFIG ? createExitConfigMsg() : createEnterConfigMsg();
+    const packet = generatePacket(msg);
+    await window.electronAPI.serial.send(packet);
+  };
+
+  const enrollFace = async () => {
+    if (!isConnected || mcuState !== SysobjUartState.CONFIG) return;
+    const packet = generatePacket(createEnrollMsg());
+    await window.electronAPI.serial.send(packet);
+  };
+
+  const commitEnroll = async () => {
+    if (!isConnected || mcuState !== SysobjUartState.CONFIG) return;
+    const packet = generatePacket(createCommitEnrollMsg());
+    await window.electronAPI.serial.send(packet);
+  };
+
+  const clearEmbeddings = async () => {
+    if (!isConnected || mcuState !== SysobjUartState.CONFIG) return;
+    const packet = generatePacket(createClearEmbeddingsMsg());
+    await window.electronAPI.serial.send(packet);
+  };
+
+  const selectModel = async (modelId: ModelId) => {
+    if (!isConnected || mcuState !== SysobjUartState.CONFIG) return;
+    const packet = generatePacket(createModelSelectMsg(modelId));
+    await window.electronAPI.serial.send(packet);
+  };
+
   // Log Subscription
   useEffect(() => {
     if (!window.electronAPI?.serial) return;
@@ -246,12 +314,17 @@ function App() {
 
         const extracted = extractPackets(rxBufferRef.current);
         extracted.forEach(parsed => {
-          if (parsed.msg && parsed.msg.msg_type === SysobjUartMsgType.MANAGE && parsed.msg.msg_subtype === SysobjUartManageSubtype.TELEMETRY) {
-            if (parsed.msg.data && parsed.msg.data.length >= 4) {
+          if (parsed.msg && parsed.msg.msg_type === SysobjUartMsgType.MANAGE) {
+            if (parsed.msg.msg_subtype === SysobjUartManageSubtype.TELEMETRY && parsed.msg.data && parsed.msg.data.length >= 4) {
               const cpuLoad = parsed.msg.data[0];
               const inferenceTime = parsed.msg.data[1] | (parsed.msg.data[2] << 8);
               const nbDetect = parsed.msg.data[3];
               setTelemetry({ cpuLoad, inferenceTime, nbDetect });
+            } else if (parsed.msg.msg_subtype === SysobjUartManageSubtype.GET_STATE && parsed.msg.data) {
+              const resp = parseStateResponse(parsed.msg.data);
+              if (resp && resp.status === 0) {
+                setMcuState(resp.state);
+              }
             }
           }
 
@@ -268,6 +341,10 @@ function App() {
                     status: resp.status === 0 ? 'ok' : 'error',
                   },
                 }));
+                // Sync active model selector when PARAM_ACTIVE_MODEL (id=3) is read
+                if (resp.paramId === 3) {
+                  setActiveModelId(resp.value as ModelId);
+                }
               }
             } else if (parsed.msg.msg_subtype === SysobjUartConfigSubtype.PARAM_WRITE && parsed.msg.data) {
               const resp = parseParamWriteResponse(parsed.msg.data);
@@ -280,6 +357,36 @@ function App() {
                   },
                 }));
               }
+            } else if (
+              (parsed.msg.msg_subtype === SysobjUartConfigSubtype.ENTER_CONFIG ||
+               parsed.msg.msg_subtype === SysobjUartConfigSubtype.EXIT_CONFIG) &&
+              parsed.msg.data
+            ) {
+              const resp = parseStateResponse(parsed.msg.data);
+              if (resp && resp.status === 0) {
+                setMcuState(resp.state);
+              }
+            } else if (
+              parsed.msg.msg_subtype === SysobjUartConfigSubtype.MODEL_SELECT &&
+              parsed.msg.data
+            ) {
+              const resp = parseModelSelectResponse(parsed.msg.data);
+              if (resp && resp.status === 0) {
+                setActiveModelId(resp.modelId as ModelId);
+              }
+            } else if (
+              parsed.msg.msg_subtype === SysobjUartConfigSubtype.COMMIT_ENROLL &&
+              parsed.msg.data
+            ) {
+              const resp = parseCommitEnrollResponse(parsed.msg.data);
+              if (resp && resp.status === 0) {
+                setEnrolledCount(resp.sampleCount);
+              }
+            } else if (
+              parsed.msg.msg_subtype === SysobjUartConfigSubtype.CLEAR_EMBEDDINGS &&
+              parsed.msg.data && parsed.msg.data[0] === 0
+            ) {
+              setEnrolledCount(0);
             }
           }
 
@@ -382,17 +489,33 @@ function App() {
         <div className="panel-section">
           <div className="section-header">
             <h2>Config Params</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className={`param-badge ${mcuState === SysobjUartState.CONFIG ? 'ok' : mcuState === SysobjUartState.ON ? 'default' : 'loading'}`}>
+                {mcuState === SysobjUartState.BOOT ? 'boot' : mcuState === SysobjUartState.ON ? 'on' : mcuState === SysobjUartState.CONFIG ? 'config' : '?'}
+              </span>
+              <button
+                className="btn-text"
+                onClick={readAllParams}
+                disabled={!isConnected || mcuState !== SysobjUartState.CONFIG}
+              >
+                Read All
+              </button>
+            </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
             <button
-              className="btn-text"
-              onClick={readAllParams}
-              disabled={!isConnected}
+              className={`btn btn-small ${mcuState === SysobjUartState.CONFIG ? 'btn-danger' : 'btn-secondary'}`}
+              onClick={toggleConfigMode}
+              disabled={!isConnected || mcuState < 0 || mcuState === SysobjUartState.BOOT}
+              style={{ width: '100%' }}
             >
-              Read All
+              {mcuState === SysobjUartState.CONFIG ? 'Exit Config Mode' : 'Enter Config Mode'}
             </button>
           </div>
           <div className="param-list">
             {PARAM_DEFS.map(def => {
               const p = params[def.id as ParamId];
+              const inConfig = mcuState === SysobjUartState.CONFIG;
               return (
                 <div key={def.id} className="param-row">
                   <div className="param-header">
@@ -436,14 +559,14 @@ function App() {
                     <button
                       className="btn btn-small btn-secondary"
                       onClick={() => readParam(def.id as ParamId)}
-                      disabled={!isConnected}
-                      title={`Read ${def.name} from device`}
+                      disabled={!isConnected || !inConfig}
+                      title={inConfig ? `Read ${def.name} from device` : 'Enter config mode first'}
                     >R</button>
                     <button
                       className="btn btn-small btn-primary"
                       onClick={() => writeParam(def.id as ParamId)}
-                      disabled={!isConnected}
-                      title={`Write ${def.name} to device`}
+                      disabled={!isConnected || !inConfig}
+                      title={inConfig ? `Write ${def.name} to device` : 'Enter config mode first'}
                     >W</button>
                   </div>
                 </div>
@@ -451,6 +574,65 @@ function App() {
             })}
           </div>
         </div>
+
+        <div className="panel-section">
+          <h2>Model Select</h2>
+          <div className="control-group">
+            <select
+              className="select-input"
+              value={activeModelId}
+              onChange={e => selectModel(Number(e.target.value) as ModelId)}
+              disabled={!isConnected || mcuState !== SysobjUartState.CONFIG}
+            >
+              {MODEL_DEFS.map(m => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+            {MODEL_DEFS.length <= 1 && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Deploy models via model_converter to populate this list.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {activeModelId === 1 && (
+          <div className="panel-section">
+            <h2>Face Recognition</h2>
+            <div className="telemetry-card">
+              <div className="telemetry-item">
+                <span className="telemetry-label">Enrolled samples</span>
+                <span className="telemetry-value">{enrolledCount}</span>
+              </div>
+            </div>
+            <div className="control-group" style={{ flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={enrollFace}
+                disabled={!isConnected || mcuState !== SysobjUartState.CONFIG}
+                title="Capture embedding for the next detected face"
+              >
+                Enroll Face
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={commitEnroll}
+                disabled={!isConnected || mcuState !== SysobjUartState.CONFIG}
+                title="Average enrolled samples and persist to flash"
+              >
+                Commit Enrollment
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={clearEmbeddings}
+                disabled={!isConnected || mcuState !== SysobjUartState.CONFIG}
+                title="Erase all enrolled embeddings from flash"
+              >
+                Clear Embeddings
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="panel-section">
           <h2>Camera Setup</h2>

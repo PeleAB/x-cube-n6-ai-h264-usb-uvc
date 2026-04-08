@@ -23,11 +23,13 @@
 
 #include "sysobj_encoder.h"
 #include "app_postprocess.h"
+#include "app/face_result.h"
 #include "uvcl.h"
 
 void app_display_init(void);
 int app_display_setup(const ENC_Conf_t *enc_conf, const UVCL_Conf_t *uvcl_conf);
 int app_display_render(uint8_t *frame_buffer, od_pp_out_t *pp_out);
+int app_display_render_faces(uint8_t *frame_buffer, const face_pipeline_result_t *fr);
 
 #endif
 
