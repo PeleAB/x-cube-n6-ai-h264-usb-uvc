@@ -98,7 +98,6 @@ void USART1_IRQHandler(void) { HAL_UART_IRQHandler(&huart1); }
 
 void USB1_OTG_HS_IRQHandler(void) { UVCL_IRQHandler(); }
 
-void NPU0_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
 void NPU1_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
 void NPU2_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
 void NPU3_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
