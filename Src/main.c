@@ -86,6 +86,9 @@ static void main_thread_fct(void *arg) {
   for (i = PVD_PVM_IRQn; i <= LTDC_UP_ERR_IRQn; i++)
     HAL_NVIC_SetPriority(i, preemptPriority, subPriority);
 
+  /* Ensure USB has high priority to avoid UVC timeouts under heavy AI load */
+  HAL_NVIC_SetPriority(USB1_OTG_HS_IRQn, preemptPriority - 3, subPriority);
+
   BSP_PlatformInit();
 
   sysobj_uart_init(&huart1);

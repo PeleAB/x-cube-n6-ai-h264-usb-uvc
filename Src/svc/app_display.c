@@ -246,7 +246,8 @@ static size_t encode_display(int is_intra_force, uint8_t *p_buffer) {
   if ((int)res <= 0)
     return res;
 
-  memcpy(&uvc_in_buffers, venc_out_buffer, res);
+  memcpy(uvc_in_buffers, venc_out_buffer, res);
+  SCB_CleanDCache_by_Addr((uint32_t *)uvc_in_buffers, res);
 
   return res;
 }
@@ -266,12 +267,14 @@ static void app_uvc_streaming_active(struct uvcl_callbacks *cbs,
                                      UVCL_StreamConf_t stream) {
   (void)cbs;
   (void)stream;
+  printf("UVC: Streaming Active\n");
   uvc_is_active = 1;
   BSP_LED_On(LED_RED);
 }
 
 static void app_uvc_streaming_inactive(struct uvcl_callbacks *cbs) {
   (void)cbs;
+  printf("UVC: Streaming Inactive\n");
   uvc_is_active = 0;
   BSP_LED_Off(LED_RED);
 }
