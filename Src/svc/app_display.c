@@ -382,7 +382,9 @@ int app_display_render_faces(uint8_t *frame_buffer, const face_pipeline_result_t
   }
 
   ts = HAL_GetTick();
+  SCB_InvalidateDCache_by_Addr((uint32_t *)frame_buffer, VENC_WIDTH * VENC_HEIGHT * 4);
   build_display_faces(frame_buffer, fr);
+  SCB_CleanDCache_by_Addr((uint32_t *)frame_buffer, VENC_WIDTH * VENC_HEIGHT * 4);
   stats_detect_update(fr->num_faces);
   time_stat_update(&stats->disp_display_time, HAL_GetTick() - ts);
 
@@ -410,7 +412,9 @@ int app_display_render(uint8_t *frame_buffer, od_pp_out_t *pp_out) {
   }
 
   ts = HAL_GetTick();
+  SCB_InvalidateDCache_by_Addr((uint32_t *)frame_buffer, VENC_WIDTH * VENC_HEIGHT * 4);
   build_display(frame_buffer, pp_out);
+  SCB_CleanDCache_by_Addr((uint32_t *)frame_buffer, VENC_WIDTH * VENC_HEIGHT * 4);
 
   stats_detect_update(pp_out->nb_detect);
 
