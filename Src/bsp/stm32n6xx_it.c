@@ -23,6 +23,7 @@
 #include "cmw_camera.h"
 #include "uvcl.h"
 #include "ll_aton_osal.h"
+#include "ll_aton_platform.h"
 
 extern DMA_HandleTypeDef hdma_usart1_rx;
 
@@ -98,6 +99,18 @@ void USART1_IRQHandler(void) { HAL_UART_IRQHandler(&huart1); }
 
 void USB1_OTG_HS_IRQHandler(void) { UVCL_IRQHandler(); }
 
-void NPU1_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
-void NPU2_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
-void NPU3_IRQHandler(void) { LL_ATON_OSAL_SIGNAL_EVENT(); }
+void NPU1_IRQHandler(void) {
+  uint32_t irqs = ATON_INTCTRL_INTREG_GET(1);
+  ATON_INTCTRL_INTCLR_SET(1, irqs);
+  LL_ATON_OSAL_SIGNAL_EVENT();
+}
+void NPU2_IRQHandler(void) {
+  uint32_t irqs = ATON_INTCTRL_INTREG_GET(2);
+  ATON_INTCTRL_INTCLR_SET(2, irqs);
+  LL_ATON_OSAL_SIGNAL_EVENT();
+}
+void NPU3_IRQHandler(void) {
+  uint32_t irqs = ATON_INTCTRL_INTREG_GET(3);
+  ATON_INTCTRL_INTCLR_SET(3, irqs);
+  LL_ATON_OSAL_SIGNAL_EVENT();
+}
