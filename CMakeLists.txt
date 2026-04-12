@@ -60,3 +60,9 @@ set_source_files_properties(
 
 # Link the platform library
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE n6platform)
+
+# Add our newly integrated AI models to the build target
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${PROJECT_ROOT}/Model/face_detection.c
+    ${PROJECT_ROOT}/Model/face_recognition.c
+)

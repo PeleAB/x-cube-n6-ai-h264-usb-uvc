@@ -56,6 +56,7 @@ typedef struct
   uint32_t user_output_count;
   uint32_t postprocess_type;
   uint8_t is_initialized;
+  uint8_t *user_supplied_output_ptr;
 } nn_service_model_t;
 
 nn_service_status_t nn_service_init(void);
@@ -64,6 +65,7 @@ nn_service_status_t nn_service_select(nn_service_handle_t handle);
 const nn_service_model_t *nn_service_active(void);
 const nn_service_model_t *nn_service_get(nn_service_handle_t handle);
 nn_service_status_t nn_service_prepare_io(uint8_t *input, uint32_t input_len, uint8_t *output, uint32_t output_len);
+nn_service_status_t nn_service_sync_output(void);
 uint32_t nn_service_max_input_size(void);
 uint32_t nn_service_max_output_size(void);
 uint32_t nn_service_count(void);

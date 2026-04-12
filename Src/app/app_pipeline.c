@@ -59,7 +59,8 @@ static int capture_buffer_disp_idx = 1;
 static int capture_buffer_capt_idx = 0;
 
 /* model */
-LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(Default);
+LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(face_detection);
+LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(face_recognition);
 static uint8_t nn_input_buffers[2][NN_INPUT_BUFFER_SIZE] ALIGN_32 IN_PSRAM;
 static bqueue_t nn_input_queue;
 static uint8_t nn_output_buffers[2][NN_OUTPUT_BUFFER_SIZE_ALIGN] ALIGN_32;
@@ -183,8 +184,12 @@ static void nn_thread_fct(void *arg)
     Run_Inference(nn_model_det->instance);
     xSemaphoreGive(s_inference_mutex);
 
-    /* Placeholder for intermediate step: Using output_buffer from det to crop input for rec.
-       We will reuse both capture_buffer_local and output_buffer for the second model run. */
+    /* 
+     * TODO: Insert intermediate step here!
+     * Using the SRAM outputs of the detection model (accessible via nn_service memory) 
+     * to crop the input face for the recognition model block.
+     * We will reuse both capture_buffer_local and output_buffer for the second model run.
+     */
 
     /* 2. Second model: Recognition */
     SYSOBJ_CacheInvalidate(output_buffer, nn_model_rec->user_output_size);
@@ -195,6 +200,10 @@ static void nn_thread_fct(void *arg)
     xSemaphoreTake(s_inference_mutex, portMAX_DELAY);
     Run_Inference(nn_model_rec->instance);
     xSemaphoreGive(s_inference_mutex);
+    
+    /* Safely fetch final mapped representation values from PSRAM to Output Queue buffer */
+    nn_service_sync_output();
+
     time_stat_update(&stats->nn_inference_time, HAL_GetTick() - ts);
 
     bqueue_put_free(&nn_input_queue);
@@ -269,13 +278,13 @@ static const param_descriptor_t s_param_table[PARAM_ID_COUNT] = {
 void app_pipeline_init(void)
 {
   nn_service_model_cfg_t nn_cfg_det = {
-    .name = "default_det",
-    .instance = &NN_Instance_Default,
+    .name = "centerface",
+    .instance = &NN_Instance_face_detection,
     .postprocess_type = POSTPROCESS_TYPE,
   };
   nn_service_model_cfg_t nn_cfg_rec = {
-    .name = "default_rec",
-    .instance = &NN_Instance_Default,
+    .name = "mobilefacenet",
+    .instance = &NN_Instance_face_recognition,
     .postprocess_type = POSTPROCESS_TYPE,
   };
   int ret;

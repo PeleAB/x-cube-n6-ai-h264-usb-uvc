@@ -33,7 +33,7 @@ typedef struct
 
 static nn_service_ctx_t nn_ctx;
 
-static const LL_Buffer_InfoTypeDef *nn_service_first_user_buffer(const LL_Buffer_InfoTypeDef *buffers,
+static const LL_Buffer_InfoTypeDef *nn_service_first_io_buffer(const LL_Buffer_InfoTypeDef *buffers,
                                                                  uint32_t *user_count)
 {
   const LL_Buffer_InfoTypeDef *first = NULL;
@@ -43,11 +43,10 @@ static const LL_Buffer_InfoTypeDef *nn_service_first_user_buffer(const LL_Buffer
     goto end;
 
   while (buffers->name != NULL) {
-    if (buffers->is_user_allocated) {
-      if (first == NULL)
-        first = buffers;
-      count++;
-    }
+    // Removed is_user_allocated condition to support static SRAM mapping natively
+    if (first == NULL)
+      first = buffers;
+    count++;
     buffers++;
   }
 
@@ -108,8 +107,8 @@ nn_service_status_t nn_service_register(const nn_service_model_cfg_t *cfg, nn_se
                      ? model->instance->network->output_buffers_info()
                      : NULL;
 
-  first_input = nn_service_first_user_buffer(inputs_info, &model->user_input_count);
-  first_output = nn_service_first_user_buffer(outputs_info, &model->user_output_count);
+  first_input = nn_service_first_io_buffer(inputs_info, &model->user_input_count);
+  first_output = nn_service_first_io_buffer(outputs_info, &model->user_output_count);
   if (!first_input || !first_output)
     return NN_SERVICE_ERR_NO_BUFFERS;
 
@@ -162,6 +161,11 @@ const nn_service_model_t *nn_service_get(nn_service_handle_t handle)
 
 nn_service_status_t nn_service_prepare_io(uint8_t *input, uint32_t input_len, uint8_t *output, uint32_t output_len)
 {
+  const LL_Buffer_InfoTypeDef *inputs_info;
+  const LL_Buffer_InfoTypeDef *outputs_info;
+  const LL_Buffer_InfoTypeDef *first_input;
+  const LL_Buffer_InfoTypeDef *first_output;
+
   if (!nn_ctx.runtime_ready || nn_ctx.active == NULL)
     return NN_SERVICE_ERR_INIT;
   if (!input || !output)
@@ -176,11 +180,51 @@ nn_service_status_t nn_service_prepare_io(uint8_t *input, uint32_t input_len, ui
   if (input_len < nn_ctx.active->user_input_size || output_len < nn_ctx.active->user_output_size)
     return NN_SERVICE_ERR_ARGS;
 
-  if (LL_ATON_Set_User_Input_Buffer(nn_ctx.active->instance, 0, input, input_len) != LL_ATON_User_IO_NOERROR)
-    return NN_SERVICE_ERR_IO;
-  if (LL_ATON_Set_User_Output_Buffer(nn_ctx.active->instance, 0, output, output_len) != LL_ATON_User_IO_NOERROR)
-    return NN_SERVICE_ERR_IO;
+  inputs_info = nn_ctx.active->instance->network->input_buffers_info();
+  first_input = nn_service_first_io_buffer(inputs_info, NULL);
 
+  outputs_info = nn_ctx.active->instance->network->output_buffers_info();
+  first_output = nn_service_first_io_buffer(outputs_info, NULL);
+
+  if (first_input && first_input->is_user_allocated) {
+    if (LL_ATON_Set_User_Input_Buffer(nn_ctx.active->instance, 0, input, input_len) != LL_ATON_User_IO_NOERROR)
+      return NN_SERVICE_ERR_IO;
+  } else if (first_input) {
+    // Statically allocated internal buffer. Map memory and copy input payload
+    void *internal_ptr = (void *)LL_Buffer_addr_start(first_input);
+    if (input != internal_ptr) {
+      memcpy(internal_ptr, input, input_len);
+    }
+  }
+
+  if (first_output && first_output->is_user_allocated) {
+    if (LL_ATON_Set_User_Output_Buffer(nn_ctx.active->instance, 0, output, output_len) != LL_ATON_User_IO_NOERROR)
+      return NN_SERVICE_ERR_IO;
+  }
+
+  // Cache the output pointer for the sync phase
+  nn_ctx.active->user_supplied_output_ptr = output;
+
+  return NN_SERVICE_OK;
+}
+
+nn_service_status_t nn_service_sync_output(void)
+{
+  const LL_Buffer_InfoTypeDef *outputs_info;
+  const LL_Buffer_InfoTypeDef *first_output;
+
+  if (!nn_ctx.runtime_ready || nn_ctx.active == NULL)
+    return NN_SERVICE_ERR_INIT;
+
+  outputs_info = nn_ctx.active->instance->network->output_buffers_info();
+  first_output = nn_service_first_io_buffer(outputs_info, NULL);
+
+  if (first_output && !first_output->is_user_allocated) {
+    if (nn_ctx.active->user_supplied_output_ptr) {
+      void *internal_ptr = (void *)LL_Buffer_addr_start(first_output);
+      memcpy(nn_ctx.active->user_supplied_output_ptr, internal_ptr, nn_ctx.active->user_output_size);
+    }
+  }
   return NN_SERVICE_OK;
 }
 
