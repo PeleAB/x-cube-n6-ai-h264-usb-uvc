@@ -122,13 +122,19 @@ void NPURam_enable(void)
   __HAL_RCC_NPU_FORCE_RESET();
   __HAL_RCC_NPU_RELEASE_RESET();
 
-  /* Enable NPU RAMs (4x448KB) */
+  /* Enable NPU & CPU RAMs (AXISRAM1-6) since the Face Detection model is huge */
+  __HAL_RCC_AXISRAM1_MEM_CLK_ENABLE();
+  __HAL_RCC_AXISRAM2_MEM_CLK_ENABLE();
   __HAL_RCC_AXISRAM3_MEM_CLK_ENABLE();
   __HAL_RCC_AXISRAM4_MEM_CLK_ENABLE();
   __HAL_RCC_AXISRAM5_MEM_CLK_ENABLE();
   __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
   __HAL_RCC_RAMCFG_CLK_ENABLE();
   RAMCFG_HandleTypeDef hramcfg = {0};
+  hramcfg.Instance =  RAMCFG_SRAM1_AXI;
+  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
+  hramcfg.Instance =  RAMCFG_SRAM2_AXI;
+  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
   hramcfg.Instance =  RAMCFG_SRAM3_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
   hramcfg.Instance =  RAMCFG_SRAM4_AXI;
