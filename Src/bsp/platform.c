@@ -131,8 +131,6 @@ void NPURam_enable(void)
   __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
   __HAL_RCC_RAMCFG_CLK_ENABLE();
   RAMCFG_HandleTypeDef hramcfg = {0};
-  hramcfg.Instance =  RAMCFG_SRAM1_AXI;
-  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
   hramcfg.Instance =  RAMCFG_SRAM2_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
   hramcfg.Instance =  RAMCFG_SRAM3_AXI;
